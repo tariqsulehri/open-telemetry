@@ -1,0 +1,21 @@
+version: "3.8"
+services:
+  sonar-scanner:
+    container_name: sonar-scanner
+    image: sonarsource/sonar-scanner-cli
+    volumes:
+      - ./:/usr/src
+    networks:
+      - tkxel
+    environment:
+      - SONAR_HOST_URL=https://tkxel-team.com
+      - SONAR_LOGIN=${SONAR_LOGIN}
+
+volumes:
+  sonar-scanner:
+    name: sonar-scanner
+  
+networks:
+  tkxel:
+    name: tkxel
+    driver: bridge

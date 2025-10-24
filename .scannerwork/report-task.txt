@@ -1,0 +1,6 @@
+projectKey=Node-Js-Boilerplate
+serverUrl=https://tkxel-team.com
+serverVersion=9.0.1.46107
+dashboardUrl=https://tkxel-team.com/dashboard?id=Node-Js-Boilerplate
+ceTaskId=AZMlubCftvP2sXQCcVBy
+ceTaskUrl=https://tkxel-team.com/api/ce/task?id=AZMlubCftvP2sXQCcVBy
