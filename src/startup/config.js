@@ -30,7 +30,7 @@ module.exports = function (app) {
     express.urlencoded({
       extended: true,
       limit: "20mb",
-      parameterLimit: 500000000,
+      parameterLimit: 50000000,
     })
   ); //add limit
   app.use(logger("dev"));
