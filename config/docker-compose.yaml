@@ -1,0 +1,26 @@
+# docker-compose.yml
+services:
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.129.1
+    container_name: otelcol
+    volumes:
+      - ./collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    restart: unless-stopped
+
+  otelgen:
+    image: ghcr.io/krzko/otelgen:v0.5.2
+    container_name: otelgen
+    command:
+      [
+        "--otel-exporter-otlp-endpoint",
+        "otelcol:4317",
+        "--insecure",
+        "logs",
+        "multi",
+      ]
+    depends_on:
+      - otelcol
+
+networks:
+  otelnet:
+    driver: bridge
