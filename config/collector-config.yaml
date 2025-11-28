@@ -1,16 +1,32 @@
 # otelcol.yaml
-receivers:
-  otlp:
-    protocols:
-      grpc:
-        endpoint: 0.0.0.0:4317
+processors:
+  batch:
+  filter: # ...
+  transform: # ...
+  memory_limiter:
+    # How often to check the collector's memory usage.
+    check_interval: 1s
+    # The hard memory limit in Mebibytes (MiB). If usage exceeds this,
+    # the collector will start rejecting new data.
+    limit_mib: 400
+    # A soft limit. When usage drops below this, the collector will
+    # start accepting data again.
+    spike_limit_mib: 100
 
 exporters:
-  debug:
-    verbosity: detailed
+  otlp/jaeger:
+    endpoint: jaeger:4317 # The address of the Jaeger gRPC endpoint
+    tls:
+      insecure: true # Use TLS in production
 
 service:
   pipelines:
     logs:
       receivers: [ otlp ]
+      processors: [ memory_limiter, filter, transform, batch ]
       exporters: [ debug ]
+
+    traces:
+      receivers: [ otlp ]
+      processors: [ memory_limiter, batch ]
+      exporters: [ otlp/jaeger ]
