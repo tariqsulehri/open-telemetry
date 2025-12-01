@@ -12,8 +12,81 @@ app.use(helmet());
 app.use(cookieParser());
 app.set("view engine", "ejs");
 
+// CORRECT IMPORT: Use the main api package, not api-metrics
+const { metrics, trace } = require('@opentelemetry/api'); 
+
 dotenv.config({ path: path.join(__dirname, ".env") });
+
+
 require("./src/startup/routes")(app);
+
+// =========================================================
+// 1. GLOBAL INSTANTIATION (The "Stick Around" Rule)
+// =========================================================
+
+// Get the meter ONCE. 
+// Ideally, the name matches your service name or scope.
+const meter = metrics.getMeter('payment-service');
+
+// Create Instruments ONCE.
+// These are singletons. We will reuse 'paymentCounter' 
+// every time a user hits the endpoint.
+const paymentCounter = meter.createCounter('payment_transactions', {
+  description: 'Counts total payment transactions',
+  unit: '1', // The unit of measurement
+});
+
+const paymentLatencyHistogram = meter.createHistogram('payment_duration', {
+  description: 'Records how long payments take to process',
+  unit: 'ms',
+});
+
+// =========================================================
+// 2. REQUEST HANDLERS
+// =========================================================
+
+app.get('/api/checkout', async (req, res) => {
+  // Start a timer for the Histogram
+  const startTime = Date.now();
+  
+  // Get the current trace for logging/tagging
+  const currentSpan = trace.getActiveSpan();
+
+  // Simulate Business Logic (Random amount)
+  const amount = Math.floor(Math.random() * 100);
+
+  // Add metadata to the Trace (not the Metric)
+  if (currentSpan) {
+    currentSpan.setAttribute('payment.amount', amount);
+    currentSpan.setAttribute('payment.currency', 'USD');
+  }
+
+  // Simulate processing delay (50ms to 250ms)
+  const delay = Math.floor(Math.random() * 200) + 50;
+  await new Promise(resolve => setTimeout(resolve, delay));
+
+  // =====================================================
+  // 3. RECORD METRICS (Reusing the global instruments)
+  // =====================================================
+  
+  // A. Increment the Counter
+  // We pass 'attributes' here to slice/dice data in Grafana later
+  paymentCounter.add(1, { 
+    status: 'success', 
+    currency: 'USD' 
+  });
+
+  // B. Record the Duration in Histogram
+  const duration = Date.now() - startTime;
+  paymentLatencyHistogram.record(duration, {
+    status: 'success'
+  });
+
+  info('Payment processed', { amount, duration });
+  res.json({ status: 'success', amount, duration });
+});
+
+
 
 app.get("/", (req, res) => {
   info('Handling /hello', { foo: 'bar' });

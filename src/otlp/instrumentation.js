@@ -24,16 +24,13 @@ const traceExporter = new OTLPTraceExporter({
 });
 
 // 3. Configure where to send Metrics
-// const metricReader = new PeriodicExportingMetricReader({
-//   exporter: new OTLPMetricExporter({
-//     url: 'http://localhost:4318/v1/metrics',
-//   }),
-//   exportIntervalMillis: 10000, // Send metrics every 10 seconds
-// });
-
-const metricExporter = new OTLPMetricExporter({
-  url:'http://localhost:4318/v1/metrics',
+const metricReader = new PeriodicExportingMetricReader({
+  exporter: new OTLPMetricExporter({
+    url: 'http://localhost:4318/v1/metrics',
+  }),
+  exportIntervalMillis: 10000, // Send metrics every 10 seconds
 });
+
 
 const bsp = new BatchSpanProcessor(traceExporter, {
   maxExportBatchSize: 1000,
@@ -44,18 +41,24 @@ const bsp = new BatchSpanProcessor(traceExporter, {
 const sdk = new NodeSDK({
   resource: resource,
   traceExporter: traceExporter,
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: metricExporter,
-    exportIntervalMillis: 60000, // Production: Export every 60s to save bandwidth
-  }),
+  metricReader: metricReader,
   instrumentations: [
+    // Automatically instrument common libraries (Express, Http, etc.)
     getNodeAutoInstrumentations({
       // specialized config can go here if needed, e.g., disabling fs instrumentation
       '@opentelemetry/instrumentation-fs': { enabled: false },
     }),
+    new ExpressInstrumentation(),
+    new HttpInstrumentation(),
+    // // Specifically instrument Winston for Logs
+    // new WinstonInstrumentation({
+    //     // This hook injects trace_id and span_id into your logs automatically!
+    //     logHook: (span, record) => {
+    //         record['resource.service.name'] = 'my-node-service';
+    //     },
+    // }),
   ],
 });
-
 
 
 // 5. Start the SDK
