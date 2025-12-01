@@ -5,7 +5,10 @@ const { WinstonInstrumentation } = require('@opentelemetry/instrumentation-winst
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-proto');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
+const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http')
 const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {ExpressInstrumentation} = require('@opentelemetry/instrumentation-express')
+const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base')
 const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
 
 // 1. Define your service name (so you find it in your dashboard)
@@ -21,30 +24,39 @@ const traceExporter = new OTLPTraceExporter({
 });
 
 // 3. Configure where to send Metrics
-const metricReader = new PeriodicExportingMetricReader({
-  exporter: new OTLPMetricExporter({
-    url: 'http://localhost:4318/v1/metrics',
-  }),
-  exportIntervalMillis: 10000, // Send metrics every 10 seconds
+// const metricReader = new PeriodicExportingMetricReader({
+//   exporter: new OTLPMetricExporter({
+//     url: 'http://localhost:4318/v1/metrics',
+//   }),
+//   exportIntervalMillis: 10000, // Send metrics every 10 seconds
+// });
+
+const metricExporter = new OTLPMetricExporter({
+  url:'http://localhost:4318/v1/metrics',
 });
+
+const bsp = new BatchSpanProcessor(traceExporter, {
+  maxExportBatchSize: 1000,
+  maxQueueSize: 1000,
+})
 
 // 4. Initialize the SDK
 const sdk = new NodeSDK({
   resource: resource,
   traceExporter: traceExporter,
-  metricReader: metricReader,
+  metricReader: new PeriodicExportingMetricReader({
+    exporter: metricExporter,
+    exportIntervalMillis: 60000, // Production: Export every 60s to save bandwidth
+  }),
   instrumentations: [
-    // Automatically instrument common libraries (Express, Http, etc.)
-    getNodeAutoInstrumentations(),
-    // Specifically instrument Winston for Logs
-    new WinstonInstrumentation({
-        // This hook injects trace_id and span_id into your logs automatically!
-        logHook: (span, record) => {
-            record['resource.service.name'] = 'my-node-service';
-        },
+    getNodeAutoInstrumentations({
+      // specialized config can go here if needed, e.g., disabling fs instrumentation
+      '@opentelemetry/instrumentation-fs': { enabled: false },
     }),
   ],
 });
+
+
 
 // 5. Start the SDK
 sdk.start();
