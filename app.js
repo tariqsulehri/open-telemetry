@@ -2,6 +2,9 @@ require('./src/telemetry/instrumentation');
 
 const express = require('express');
 const app = express();
+const dotenv = require("dotenv");
+
+dotenv.config();
 
 app.get('/hello', (req, res) =>{
     setTimeout(() => {
@@ -9,5 +12,6 @@ app.get('/hello', (req, res) =>{
     }, 500);
 })
 
+let nodePort = process.env.PORT || 3500; 
 
-app.listen(3000, ()=> {console.log("Server is running on port 3000")});
+app.listen(nodePort, ()=> {console.log(`Server is running on port: ${nodePort}` )});
