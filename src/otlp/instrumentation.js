@@ -6,15 +6,18 @@ const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto'
 const { OTLPMetricExporter } = require('@opentelemetry/exporter-metrics-otlp-proto');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { HttpInstrumentation } = require('@opentelemetry/instrumentation-http')
-const { resourceFromAttributes } = require('@opentelemetry/resources');
+const { resourceFromAttributes, Resource } = require('@opentelemetry/resources');
 const {ExpressInstrumentation} = require('@opentelemetry/instrumentation-express')
 const { BatchSpanProcessor } = require('@opentelemetry/sdk-trace-base')
-const { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } = require('@opentelemetry/semantic-conventions');
+const {
+  SEMRESATTRS_SERVICE_NAME,
+  SEMRESATTRS_SERVICE_VERSION,
+} = require('@opentelemetry/semantic-conventions');
 
 // 1. Define your service name (so you find it in your dashboard)
-const resource = new resourceFromAttributes({
-  [ATTR_SERVICE_NAME]: 'my-node-service',
-  [ATTR_SERVICE_VERSION]: '1.0.0',
+const resource = new Resource({
+  [SEMRESATTRS_SERVICE_NAME]: 'my-node-service',
+  [SEMRESATTRS_SERVICE_VERSION]: '1.0.0',
 });
 
 // 2. Configure where to send Traces (using OTLP)

@@ -76,6 +76,8 @@ app.get('/api/checkout', async (req, res) => {
     currency: 'USD' 
   });
 
+  console.log('DEBUG: Metric incremented successfully'); // Add this line
+
   // B. Record the Duration in Histogram
   const duration = Date.now() - startTime;
   paymentLatencyHistogram.record(duration, {
