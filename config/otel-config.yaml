@@ -11,20 +11,24 @@ processors:
     timeout: 1s
 
 exporters:
-  # Logging to Docker logs so we can see it working
-  debug:
-    verbosity: detailed
-
-  # Exporting to Jaeger
   otlp/jaeger:
     endpoint: "jaeger:4317"
     tls:
       insecure: true
 
+  # NEW: Expose metrics for Prometheus to scrape
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+
 service:
   pipelines:
     traces:
-      # We receive via OTLP, process, then send to Debug AND Jaeger
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ debug, otlp/jaeger ]
+      exporters: [ otlp/jaeger ]
+
+    # NEW PIPELINE FOR METRICS
+    metrics:
+      receivers: [ otlp ]
+      processors: [ batch ]
+      exporters: [ prometheus ]

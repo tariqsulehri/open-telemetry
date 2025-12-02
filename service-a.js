@@ -1,16 +1,24 @@
-require('./src/telemetry/instrumentation-l3'); // Load OTEL first
+require('./src/telemetry/instrumentation-l4'); // Load OTEL first
 const express = require('express');
-const axios = require('axios'); // You might need to npm install axios
+const { metrics } = require('@opentelemetry/api'); // Import API
+
 const app = express();
 
-app.get('/buy', async (req, res) => {
-  // Service A calls Service B
-  try {
-    const response = await axios.get('http://localhost:3001/data');
-    res.send(`Service A received: ${response.data.result}`);
-  } catch (e) {
-    res.status(500).send("Error");
-  }
+// 1. Initialize the Meter
+const meter = metrics.getMeter('shop-metrics');
+
+// 2. Create a Counter
+const itemsSoldCounter = meter.createCounter('items_sold', {
+  description: 'Count of items sold in the shop'
 });
 
-app.listen(3000, () => console.log('Service A running on 3000'));
+app.get('/buy', (req, res) => {
+  // 3. Increment the Counter
+  // We add a "label" (attribute) so we can filter by category later
+  itemsSoldCounter.add(1, { category: 'electronics' });
+  
+  console.log("Item sold!");
+  res.send('Purchase Complete');
+});
+
+app.listen(3000, () => console.log('Shop running on 3000'));
