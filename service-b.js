@@ -1,4 +1,4 @@
-require('./src/telemetry/instrumentation-l2'); // Load OTEL first
+require('./src/telemetry/instrumentation-l3'); // Load OTEL first
 const express = require('express');
 const app = express();
 

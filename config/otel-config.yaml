@@ -1,0 +1,30 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+
+exporters:
+  # Logging to Docker logs so we can see it working
+  debug:
+    verbosity: detailed
+
+  # Exporting to Jaeger
+  otlp/jaeger:
+    endpoint: "jaeger:4317"
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      # We receive via OTLP, process, then send to Debug AND Jaeger
+      receivers: [ otlp ]
+      processors: [ batch ]
+      exporters: [ debug, otlp/jaeger ]
