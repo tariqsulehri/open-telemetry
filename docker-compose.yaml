@@ -1,38 +1,8 @@
-version: '3'
+version: '3.8'
 services:
-  # 1. Your Node.js Application
-  # node-app:
-  #   build: .
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     # Point OTel to the Collector container, not localhost
-  #     - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
-  #     - OTEL_SERVICE_NAME=my-node-service
-  #   depends_on:
-  #     - otel-collector
-
-  # 2. OpenTelemetry Collector (The Traffic Cop)
-  otel-collector:
-    image: otel/opentelemetry-collector:latest
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    volumes:
-      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml
-    ports:
-      - "4318:4318" # HTTP receiver port
-      - "8889:8889" # Prometheus scrape port
-
-  # 3. Jaeger (For Visualizing Traces)
   jaeger:
     image: jaegertracing/all-in-one:latest
     ports:
-      - "16686:16686" # The UI
-      - "4317:4317"   # Internal OTLP port
-
-  # 4. Prometheus (For Visualizing Metrics)
-  prometheus:
-    image: prom/prometheus:latest
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml
+      - "16686:16686"
+      - "4318:4318"
+      
