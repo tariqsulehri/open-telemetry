@@ -66,9 +66,6 @@ If yes, you have mastered Context Propagation.
 
 
 
-
-
-
 COMMANDS
 --------------
 docker compose up -d --force-recreate
