@@ -1,0 +1,30 @@
+apiVersion: 1 # Version of Grafana's datasource configuration schema
+
+datasources:
+# ================================
+# 1. PROMETHEUS (Metrics)
+# ================================
+- name: Prometheus # Display name inside Grafana UI
+  type: prometheus # Datasource type (built-in plugin)
+  uid: prometheus # Unique ID used by dashboards/panels
+  url: http://prometheus:9090 # Prometheus server endpoint (inside Docker network)
+  access: proxy # Grafana acts as a proxy when querying Prometheus
+  isDefault: true # Makes Prometheus the default datasource
+
+# ================================
+# 2. LOKI (Logs)
+# ================================
+- name: Loki # Display name
+  type: loki # Loki datasource plugin
+  uid: loki # Unique identifier
+  url: http://loki:3100 # Loki API endpoint (Docker internal hostname)
+  access: proxy # Grafana proxies requests to Loki
+
+# ================================
+# 3. JAEGER (Traces)
+# ================================
+- name: Jaeger # Display name
+  type: jaeger # Jaeger datasource type
+  uid: jaeger # Unique ID for internal linking
+  url: http://jaeger:16686 # Jaeger Query API endpoint
+  access: proxy # Grafana fetches traces through the proxy

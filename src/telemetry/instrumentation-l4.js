@@ -24,4 +24,4 @@ const sdk = new NodeSDK({
 });
 
 sdk.start();
-console.log('Level 4: Traces & Metrics enabled.');
+console.log('mLevel 4: Traces & Metrics enabled.');

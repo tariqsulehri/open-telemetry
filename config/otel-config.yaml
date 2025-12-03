@@ -1,34 +1,63 @@
 receivers:
+  # OTLP receiver → accepts telemetry data (logs, metrics, traces)
+  # from applications using OTLP gRPC (4317) or OTLP HTTP (4318)
   otlp:
     protocols:
       grpc:
-        endpoint: 0.0.0.0:4317
+        endpoint: 0.0.0.0:4317 # Standard OTLP gRPC port
       http:
-        endpoint: 0.0.0.0:4318
+        endpoint: 0.0.0.0:4318 # Standard OTLP HTTP port
 
 processors:
+  # Batch processor → groups telemetry data before exporting
+  # Reduces network load and improves performance
   batch:
-    timeout: 1s
+    timeout: 1s # Flush data every 1 second
+
+  # Resource processor → adds/updates attributes on logs/metrics/traces
+  # This is needed so that logs going to Loki contain labels
+  resource:
+    attributes:
+    - action: insert
+      key: loki.resource.labels # Special Loki label key
+      value: service_name # Use service_name as the log label
 
 exporters:
+  # OTLP exporter for Jaeger → sends traces to Jaeger using OTLP gRPC
   otlp/jaeger:
-    endpoint: "jaeger:4317"
+    endpoint: "jaeger:4317" # Jaeger collector endpoint
     tls:
-      insecure: true
+      insecure: true # Disable TLS inside Docker/Local setup
 
-  # NEW: Expose metrics for Prometheus to scrape
+  # Prometheus exporter → exposes metrics at port 8889
+  # Prometheus scrapes this endpoint periodically
   prometheus:
     endpoint: "0.0.0.0:8889"
 
+  # 3. Logs -> Loki
+  # Loki exporter:
+  # It sends logs to Loki using the Loki push API
+  # Example (you should already have this in your real config):
+
+  loki:
+    endpoint: "http://loki:3100/loki/api/v1/push"
+
 service:
   pipelines:
+    # TRACE PIPELINE → receives traces and sends them to Jaeger
     traces:
-      receivers: [ otlp ]
-      processors: [ batch ]
-      exporters: [ otlp/jaeger ]
+      receivers: [ otlp ] # Input from apps
+      processors: [ batch ] # Optimize delivery
+      exporters: [ otlp/jaeger ] # Output to Jaeger
 
-    # NEW PIPELINE FOR METRICS
+    # METRICS PIPELINE → receives metrics and exposes Prometheus endpoint
     metrics:
       receivers: [ otlp ]
       processors: [ batch ]
       exporters: [ prometheus ]
+
+    # LOGS PIPELINE → receives logs and sends them to Loki
+    logs:
+      receivers: [ otlp ]
+      processors: [ batch, resource ] # Batch logs before export and  # Add Loki labels
+      exporters: [ loki ] # Must match the "loki" exporter name
