@@ -2,9 +2,9 @@ This is the moment of truth. We will perform a Full Stack Verification to confir
 Here is your Detailed Testing Protocol.
 
 - Phase 1: The Infrastructure Check
-    Before running code, we must ensure the "Data Center" is online.
-    Terminal 1 (Infrastructure):
-    Run this command:
+           Before running code, we must ensure the "Data Center" is online.
+  - Terminal 1 (Infrastructure):
+           Run this command:
     -----------------
     Code Bash
 
@@ -13,20 +13,20 @@ Here is your Detailed Testing Protocol.
     Verify the Lst:
     ---------------
     You must see 5 containers running with Status "Up":
-    - otel-collector-contrib (The Router)
-    - jaeger (Traces)
-    - prometheus (Metrics)
-    - loki (Logs)
-    - grafana (The Dashboard)
+        - otel-collector-contrib (The Router)
+        - jaeger (Traces)
+        - prometheus (Metrics)
+        - loki (Logs)
+        - grafana (The Dashboard)
 
-If otel-collector is missing, stop here. We need to fix the docker-compose.yml image.
+      If otel-collector is missing, stop here. We need to fix the docker-compose.yml image.
 
 - Phase 2: The Data Trigger
-
-  Now we run the application and create "Noise" for the system to record.
-- Terminal 2 (The App):
-  ----------------------
-  Start your service with the Level 5 (Winston+Metrics) setup.
+           Now we run the application and create "Noise" for the system to record.
+     
+     - Terminal 2 (The App):
+     ----------------------
+           Start your service with the Level 5 (Winston+Metrics) setup.
 
 Code Bash
 --------------
@@ -66,25 +66,33 @@ Click the Table tab (next to Graph).
 Expectation:
 You should see a row with shop-service and a value (e.g., 5 or 10).
 Status: PASS / FAIL
-3. Verify LOGS (What did it say?)
+
+- 3. Verify LOGS (What did it say?)
+----------------------------------
 URL: http://localhost:3001 (Grafana)
+
 Action:
 Menu: Click the Compass icon (Explore) on the left sidebar.
 Source: Select Loki from the dropdown at the top (it might say "Prometheus" by default).
-Label Browser:
-Click "Label browser".
-Select service_name.
-Select shop-service.
-Click "Show logs".
+Label Browser: Click "Label browser".
+
+    - Select service_name.
+    - Select shop-service.
+    - Click "Show logs".
+
 Or Manual Query: Type {service_name="shop-service"} and press Shift+Enter.
 Expectation:
 You see lines like: User is buying an item.
 Status: PASS / FAIL
-Phase 4: The "Pro" Verification (Correlation)
+
+- Phase 4: The "Pro" Verification (Correlation)
+----------------------------------------------
 This is what separates a Junior from a Senior. We check if Logs are linked to Traces.
 Stay in Grafana (Loki) view.
-Find a log line: User is buying an item.
+
+- Find a log line: User is buying an item.
 Click on that log line to expand it.
+
 Look for "Fields" or "Derived Fields":
 Do you see trace_id?
 Is there a blue/green button next to it that says "Jaeger" or "Tempo"?
