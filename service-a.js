@@ -1,31 +1,39 @@
 /* service-a.js */
-require('./src/telemetry/instrumentation-l5'); // Must be first
-const express = require('express');
-const winston = require('winston'); // Import standard logger
+require('./src/telemetry/instrumentation-l5'); // Must be first (Check your path!)
 
-// 1. Create a Standard Winston Logger
+const express = require('express');
+const winston = require('winston');
+const { metrics } = require('@opentelemetry/api'); // <--- 1. Import Metrics API
+
+// --- SETUP LOGGING ---
 const logger = winston.createLogger({
   level: 'info',
-  transports: [
-    new winston.transports.Console(), // Log to console (human readable)
-    // NOTE: The OTEL Instrumentation invisibly adds a 2nd transport here!
-  ],
+  transports: [ new winston.transports.Console() ],
+});
+
+// --- SETUP METRICS ---
+// 2. Get the Meter
+const meter = metrics.getMeter('shop-service-meter');
+
+// 3. Create the Counter
+const itemsSoldCounter = meter.createCounter('items_sold', {
+  description: 'Count of items sold in the shop'
 });
 
 const app = express();
 
 app.get('/buy', (req, res) => {
-  // 2. Just log normally!
-  // OTEL automatically grabs this, adds trace_id, and sends to Loki.
+  // --- A. RECORD METRIC ---
+  // 4. Increment the counter (This sends data to Prometheus)
+  itemsSoldCounter.add(1, { category: 'electronics' });
+
+  // --- B. RECORD LOG ---
   logger.info('User is buying an item', { 
     item_id: '99', 
     category: 'electronics' 
   });
 
-  // Example Error
-  logger.error('Payment gateway warning', { attempt: 1 });
-
-  res.send('Purchase Complete (Logs sent via Winston!)');
+  res.send('Purchase Complete (Logs + Metrics sent!)');
 });
 
 app.listen(3000, () => console.log('Shop running on 3000'));
