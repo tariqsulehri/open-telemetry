@@ -1,50 +1,53 @@
 /* service-a.js */
-require('./src/telemetry/instrumentation-l6');
+require('./src/telemetry/instrumentation-l5');
 const express = require('express');
 const cors = require('cors');
 const winston = require('winston');
-const { metrics, trace, context } = require('@opentelemetry/api'); // <--- 1. Import Trace API
+const { metrics } = require('@opentelemetry/api');
+const { Client } = require('pg'); // <--- 1. Import Postgres
 
-// --- SETUP LOGGING ---
+// --- SETUP LOGGING & METRICS ---
 const logger = winston.createLogger({
   level: 'info',
   transports: [ new winston.transports.Console() ],
 });
-
-// --- SETUP METRICS ---
 const meter = metrics.getMeter('shop-service-meter');
 const itemsSoldCounter = meter.createCounter('items_sold');
+
+// --- SETUP DATABASE ---
+const dbClient = new Client({
+  user: 'postgres',
+  host: 'localhost', // Since Node is running on Mac, we access Docker via localhost
+  database: 'shop_db',
+  password: '786Allahis1',
+  port: 5432,
+});
+
+// Connect to DB immediately
+dbClient.connect()
+  .then(() => console.log('Connected to Postgres'))
+  .catch(err => console.error(' DB Connection Error:', err));
 
 const app = express();
 app.use(cors());
 
-app.get('/buy', (req, res) => {
+app.get('/buy', async (req, res) => {
   itemsSoldCounter.add(1, { category: 'electronics' });
   logger.info('User is buying an item', { item_id: '99' });
-  res.json({ status: 'Purchase Complete' });
-});
 
-// --- NEW CRASH ROUTE ---
-app.get('/crash', (req, res) => {
   try {
-    // 1. Simulate a bad database call or logic error
-    throw new Error("Critical Database Failure: Connection Timeout");
-  } catch (e) {
-    // 2. Get the current active Span (the one tracking this HTTP request)
-    const span = trace.getSpan(context.active());
-
-    if (span) {
-      // 3. Attach the Error Stack Trace to the Span
-      span.recordException(e);
-      
-      // 4. Set Status to ERROR (This turns the Jaeger bar RED)
-      span.setStatus({ code: 2, message: e.message }); // 2 = ERROR
-    }
-
-    // 5. Log it to Loki as well
-    logger.error("Request failed", { error: e.message, stack: e.stack });
-
-    res.status(500).json({ error: "Something went wrong" });
+    // --- DATABASE QUERY ---
+    // We simulate a slow query using pg_sleep(0.5) = 500ms delay
+    // OTEL will automatically capture this!
+    const result = await dbClient.query('SELECT NOW(), pg_sleep(0.8)');
+    
+    res.json({ 
+      status: 'Purchase Complete', 
+      db_time: result.rows[0].now 
+    });
+  } catch (err) {
+    logger.error('Database query failed', { error: err.message });
+    res.status(500).json({ error: "DB Error" });
   }
 });
 
