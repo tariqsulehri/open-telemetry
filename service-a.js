@@ -1,5 +1,5 @@
 /* service-a.js */
-require('./src/telemetry/instrumentation-l5');
+require('./src/telemetry/instrumentation-l6');
 const express = require('express');
 const cors = require('cors');
 const winston = require('winston');
@@ -17,11 +17,6 @@ const itemsSoldCounter = meter.createCounter('items_sold');
 
 const app = express();
 app.use(cors());
-
-app.get('/metrics', async (req, res) => {
-  res.set('Content-Type', client.register.contentType);
-  res.send(await client.register.metrics());
-});
 
 app.get('/buy', (req, res) => {
   itemsSoldCounter.add(1, { category: 'electronics' });

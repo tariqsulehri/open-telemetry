@@ -85,6 +85,20 @@ services:
     networks:
       - obs-net
 
+  # -----------------------------------------------------------
+  # 6. POSTGRES (The Database)
+  # -----------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: shop_db
+    ports:
+      - "5432:5432" # Expose to your Mac (Localhost)
+    networks:
+      - obs-net     
+      
 # -----------------------------------------------------------
 # NETWORKS & VOLUMES
 # -----------------------------------------------------------
