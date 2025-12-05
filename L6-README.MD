@@ -1,3 +1,18 @@
+So, let's quickly knock out Level 6 to complete your Backend mastery, and then build the Frontend.
+
+
+- Level 6: Error Handling & Exceptions
+----------------------------------------
+
+The Goal: Right now, if your app crashes, you might see a 500 error in the browser, but does Jaeger show why? Does it show the specific line of code?
+We will modify your code so that when an error occurs, the Stack Trace is embedded inside the Trace Span.
+
+Step 1: Add a "Crash" Route
+
+Modify service-a.js. We will add a route /crash that intentionally throws an error.
+Update service-a.js:
+code
+JavaScript
 /* service-a.js */
 require('./src/telemetry/instrumentation-l5');
 const express = require('express');
