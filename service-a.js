@@ -18,6 +18,11 @@ const itemsSoldCounter = meter.createCounter('items_sold');
 const app = express();
 app.use(cors());
 
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', client.register.contentType);
+  res.send(await client.register.metrics());
+});
+
 app.get('/buy', (req, res) => {
   itemsSoldCounter.add(1, { category: 'electronics' });
   logger.info('User is buying an item', { item_id: '99' });

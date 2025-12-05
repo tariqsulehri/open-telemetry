@@ -33,6 +33,9 @@ node service-a.js
 
 
 
+http://localhost:8889/metrics
+
+
 
 - Commands:
 -----------------
