@@ -16,10 +16,11 @@ datasources:
 # ================================
 - name: Loki # Display name
   type: loki # Loki datasource plugin
+  access: proxy # Grafana proxies requests to Loki
   uid: loki # Unique identifier
   url: http://loki:3100 # Loki API endpoint (Docker internal hostname)
-  access: proxy # Grafana proxies requests to Loki
-
+  version: 1
+  editable: true
 # ================================
 # 3. JAEGER (Traces)
 # ================================

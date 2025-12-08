@@ -1,5 +1,3 @@
-# --- CORRECTED otel-config.yaml ---
-
 receivers:
   otlp:
     protocols:
@@ -10,47 +8,42 @@ receivers:
 
 processors:
   batch:
+    send_batch_size: 100
     timeout: 1s
-  resource:
-    attributes:
-    - action: insert
-      key: loki.resource.labels
+  attributes:
+    actions:
+    # Promotes OpenTelemetry attribute 'service.name' to a Loki label
+    - action: upsert
+      key: loki.attribute.labels
       value: service.name
 
 exporters:
-  # Debug: Prints to Docker logs (useful for verification)
-  debug:
-    verbosity: detailed
-
-  # Jaeger (Traces) - Standard OTLP Exporter using the Jaeger Service Name
   otlp/traces:
-    # Renamed exporter for clarity
-    endpoint: "jaeger:4317" # Jaeger's OTLP gRPC endpoint
+    endpoint: "jaeger:4317"
     tls:
       insecure: true
 
-  # Prometheus (Metrics) - Pushes metrics using Remote Write (PULL is hard)
-  prometheusremotewrite:
-    # <-- CORRECTED: Use prometheusremotewrite exporter
-    endpoint: "http://prometheus:9090/api/v1/write" # Pushes to Prometheus's Remote Write API
+  prometheus:
+    endpoint: "0.0.0.0:8889" # exposed for Prometheus scrape
 
-  # Loki: Sends Logs
   loki:
-    endpoint: "http://loki:3100/loki/api/v1/push"
+    endpoint: "http://loki:3100/otlp/v1/logs" #correct port & path
+    tls:
+      insecure: true
 
 service:
   pipelines:
     traces:
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ otlp/traces ] # <-- Updated to use the corrected exporter name
+      exporters: [ otlp/traces ]
 
     metrics:
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ prometheusremotewrite ] # <-- Updated to use the PUSH exporter
+      exporters: [ prometheus ]
 
     logs:
       receivers: [ otlp ]
-      processors: [ batch, resource ]
-      exporters: [ debug, loki ]
+      processors: [ batch, attributes ]
+      exporters: [ loki ]

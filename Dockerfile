@@ -21,4 +21,4 @@ EXPOSE 3500
 # CMD: Execute the application. 
 # We use the --require flag to load the OpenTelemetry instrumentation 
 # file *before* the main application file (app.js) executes.
-CMD ["node", "--require", "./src/telemetry/instrumentation-l7.js", "app.js"]
+CMD ["node", "app.js"]

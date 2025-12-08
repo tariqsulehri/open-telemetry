@@ -8,7 +8,7 @@ services:
     image: jaegertracing/all-in-one:latest
     ports:
       - "16686:16686" # UI
-      - "14250:14250" # Internal communication
+      - "14250:14250" # gRPC internal communication
     networks:
       - obs-net
 
@@ -18,11 +18,9 @@ services:
   prometheus:
     image: prom/prometheus:latest
     command: 
-      # Fixed: Use double dashes
       - "--config.file=/etc/prometheus/prometheus.yaml"
-      - "--enable-feature=remote-write-receiver"
+      - "--storage.tsdb.path=/prometheus"
     volumes:
-      # Ensure your local file is named .yaml
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml
     ports:
       - "9090:9090"
@@ -34,14 +32,14 @@ services:
   # -----------------------------------------------------------
   loki:
     image: grafana/loki:2.9.2
-    # Ensure this command line is exact
-    command: -config.file=/etc/loki/local-config.yaml 
     ports:
       - "3100:3100"
     volumes:
-      # Also ensure the volume mount is correct and the file exists locally!
-      - ./config/local-config.yaml:/etc/loki/local-config.yaml 
-      - loki-data:/loki
+      - ./config/loki-local-config.yaml:/etc/loki/local-config.yaml
+      - loki-data:/loki/data
+    command: 
+      - "-config.file=/etc/loki/local-config.yaml"
+      - "-usage-stats.enabled=false"
     networks:
       - obs-net
 
@@ -52,10 +50,10 @@ services:
     image: grafana/grafana:latest
     ports:
       - "3001:3000"
-    environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    # environment:
+    #   - GF_AUTH_ANONYMOUS_ENABLED=true
+    #   - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    #   - GF_AUTH_DISABLE_LOGIN_FORM=true
     volumes:
       - ./config/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
     depends_on:
@@ -69,7 +67,7 @@ services:
   # 5. OPEN TELEMETRY COLLECTOR (The Brain)
   # -----------------------------------------------------------
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.88.0
+    image: otel/opentelemetry-collector-contrib:0.99.0
     command: ["--config=/etc/otel-config.yaml"]
     volumes:
       - ./config/otel-config.yaml:/etc/otel-config.yaml
@@ -84,48 +82,23 @@ services:
     networks:
       - obs-net
 
-# -----------------------------------------------------------
-  # 6. POSTGRES (The Database)
   # -----------------------------------------------------------
-  # postgres:
-  #   image: postgres:15-alpine
-  #   environment:
-  #     POSTGRES_USER: admin
-  #     POSTGRES_PASSWORD: admin
-  #     POSTGRES_DB: shop_db
-  #   ports:
-  #     - "5432:5432" # Expose to your Mac (Localhost)
-  #   networks:
-  #     - obs-net
-
-
-# 6. YOUR NODEJS BACKEND APPLICATION
+  # 6. NODEJS BACKEND APPLICATION
+  # -----------------------------------------------------------
   node-backend:
-    # 1. Instructs Docker Compose to build using the Dockerfile in the current directory ('.')
     build:
-      context: . 
+      context: .
       dockerfile: Dockerfile
-    
-    # 2. Expose the port your app listens on (3500, as defined in your app.js)
     ports:
       - "3500:3500"
-      
-    # 3. CRITICAL: Ensures the Node app uses the service name for the Collector
-    #    This puts the app on the same network as the OTel Collector.
     environment:
-      # Use the correct service name inside the Docker network
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/ 
-      SERVICE_NAME: node-express-backend # Name used in traces/metrics/logs
-      
-    # 4. Ensures the Collector starts before the application tries to send data
+      NODE_ENV: production
+      SERVICE_NAME: node-express-backend
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     depends_on:
       - otel-collector
-      
-    # 5. Connects the app to your unified observability network
     networks:
       - obs-net
-
-
 
 # -----------------------------------------------------------
 # NETWORKS & VOLUMES
@@ -137,4 +110,3 @@ networks:
 volumes:
   loki-data:
     driver: local
-    
