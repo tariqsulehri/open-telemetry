@@ -1,19 +1,24 @@
-FROM node:16-alpine
+# Dockerfile (Final Version)
+# Use the current Node.js LTS version on Alpine for a small image size
+FROM node:22-alpine
 
-# Create app directory
+# Set the working directory inside the container
 WORKDIR /usr/src/app
 
-# Install app dependencies
-# A wildcard is used to ensure both package.json AND package-lock.json are copied
-# where available (npm@5+)
+# Copy package files first to leverage Docker's build cache. 
+# This means npm install only re-runs if package.json changes.
 COPY package*.json ./
 
+# Install app dependencies
 RUN npm install
-# If you are building your code for production
-# RUN npm ci --only=production
 
-# Bundle app source
+# Bundle the rest of the app source code
 COPY . .
 
-EXPOSE 3000
-CMD [ "node", "index.js" ]
+# EXPOSE: Informational port. Use the port your app is listening on (3500)
+EXPOSE 3500
+
+# CMD: Execute the application. 
+# We use the --require flag to load the OpenTelemetry instrumentation 
+# file *before* the main application file (app.js) executes.
+CMD ["node", "--require", "./src/telemetry/instrumentation-l7.js", "app.js"]

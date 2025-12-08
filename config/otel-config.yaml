@@ -1,3 +1,5 @@
+# --- CORRECTED otel-config.yaml ---
+
 receivers:
   otlp:
     protocols:
@@ -7,12 +9,8 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # 1. Batches data to reduce network calls
   batch:
     timeout: 1s
-
-  # 2. CRITICAL: Adds 'service_name' label for Loki
-  # Without this, Loki will drop the logs or Grafana won't find them.
   resource:
     attributes:
     - action: insert
@@ -20,19 +18,21 @@ processors:
       value: service.name
 
 exporters:
-  # Debug: Prints to Docker logs (for troubleshooting)
+  # Debug: Prints to Docker logs (useful for verification)
   debug:
     verbosity: detailed
 
-  # Jaeger: Sends Traces
-  otlp/jaeger:
-    endpoint: "jaeger:4317"
+  # Jaeger (Traces) - Standard OTLP Exporter using the Jaeger Service Name
+  otlp/traces:
+    # Renamed exporter for clarity
+    endpoint: "jaeger:4317" # Jaeger's OTLP gRPC endpoint
     tls:
       insecure: true
 
-  # Prometheus: Exposes Metrics
-  prometheus:
-    endpoint: "0.0.0.0:8889"
+  # Prometheus (Metrics) - Pushes metrics using Remote Write (PULL is hard)
+  prometheusremotewrite:
+    # <-- CORRECTED: Use prometheusremotewrite exporter
+    endpoint: "http://prometheus:9090/api/v1/write" # Pushes to Prometheus's Remote Write API
 
   # Loki: Sends Logs
   loki:
@@ -43,15 +43,14 @@ service:
     traces:
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ otlp/jaeger ]
+      exporters: [ otlp/traces ] # <-- Updated to use the corrected exporter name
 
     metrics:
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ prometheus ]
+      exporters: [ prometheusremotewrite ] # <-- Updated to use the PUSH exporter
 
     logs:
       receivers: [ otlp ]
-      # Note: 'resource' processor is added here to fix the Labels issue
       processors: [ batch, resource ]
       exporters: [ debug, loki ]

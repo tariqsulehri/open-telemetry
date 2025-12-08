@@ -34,14 +34,13 @@ services:
   # -----------------------------------------------------------
   loki:
     image: grafana/loki:2.9.2
-    command:
-      # Fixed: Use double dashes
-      - "-config.file=/etc/loki/local-config.yaml"
+    # Ensure this command line is exact
+    command: -config.file=/etc/loki/local-config.yaml 
     ports:
       - "3100:3100"
     volumes:
-      # REMOVED the missing config file to prevent crash
-      # We only keep the data volume
+      # Also ensure the volume mount is correct and the file exists locally!
+      - ./config/local-config.yaml:/etc/loki/local-config.yaml 
       - loki-data:/loki
     networks:
       - obs-net
@@ -88,16 +87,45 @@ services:
 # -----------------------------------------------------------
   # 6. POSTGRES (The Database)
   # -----------------------------------------------------------
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: shop_db
+  # postgres:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     POSTGRES_USER: admin
+  #     POSTGRES_PASSWORD: admin
+  #     POSTGRES_DB: shop_db
+  #   ports:
+  #     - "5432:5432" # Expose to your Mac (Localhost)
+  #   networks:
+  #     - obs-net
+
+
+# 6. YOUR NODEJS BACKEND APPLICATION
+  node-backend:
+    # 1. Instructs Docker Compose to build using the Dockerfile in the current directory ('.')
+    build:
+      context: . 
+      dockerfile: Dockerfile
+    
+    # 2. Expose the port your app listens on (3500, as defined in your app.js)
     ports:
-      - "5432:5432" # Expose to your Mac (Localhost)
+      - "3500:3500"
+      
+    # 3. CRITICAL: Ensures the Node app uses the service name for the Collector
+    #    This puts the app on the same network as the OTel Collector.
+    environment:
+      # Use the correct service name inside the Docker network
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318/v1/ 
+      SERVICE_NAME: node-express-backend # Name used in traces/metrics/logs
+      
+    # 4. Ensures the Collector starts before the application tries to send data
+    depends_on:
+      - otel-collector
+      
+    # 5. Connects the app to your unified observability network
     networks:
       - obs-net
+
+
 
 # -----------------------------------------------------------
 # NETWORKS & VOLUMES

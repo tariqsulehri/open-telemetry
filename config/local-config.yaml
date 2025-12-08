@@ -1,0 +1,36 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+
+common:
+  path_prefix: /loki/data
+  replication_factor: 1
+
+# CRITICAL: This line forces Loki to run as a single instance.
+# It tells Loki to run all modules ("all"), but in a single process.
+target: all
+
+# Storage configuration for local mode
+storage_config:
+  boltdb_shipper:
+    active_index_directory: /loki/data/boltdb-shipper-active
+    cache_location: /loki/data/boltdb-shipper-cache
+    resync_interval: 5m
+  filesystem:
+    directory: /loki/data/chunks
+
+schema_config:
+  configs:
+  - from: 2020-10-24
+    store: boltdb-shipper
+    object_store: filesystem
+    schema: v11
+    index:
+      prefix: index_
+      period: 24h
+
+limits_config:
+  volume_enabled: true
+  max_query_lookback: 0s

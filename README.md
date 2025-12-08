@@ -1,72 +1,24 @@
-1. Install Required Packages
-==================================
-1.1. Core SDK + Auto Instrumentation
------------------------------------
+Commands:
 
-npm install @opentelemetry/sdk-node \
- @opentelemetry/auto-instrumentations-node \
- @opentelemetry/resources \
- @opentelemetry/semantic-conventions
+const OTLP_ENDPOINT = 'http://otel-collector:4318/v1/';
+
+docker compose up -d --remove-orphans
 
 
-1.2. OTLP Exporters (GRPC or HTTP)
-    Use HTTP exporter — easiest and most compatible.
-----------------------------------------------------
+Docker Compose with Backend
+---------------------------------
+docker-compose up --build -d
 
-npm install \
- @opentelemetry/exporter-trace-otlp-http \
- @opentelemetry/exporter-metrics-otlp-http
+docker-compose up --build -d
+up: Starts all services defined in the YAML file.
 
+--build: Forces Docker Compose to re-read and build the Dockerfile for any services (like node-backend) that have changed.
 
-1.3. Prometheus (through Collector, not directly)
-We do not install Prometheus client — OTEL will export metrics → Collector → Prometheus.
----------------------------------------------------------------------------------------
-Extra Instrumentations
+-d: Runs the containers in detached mode (in the background).
 
-npm install \
- @opentelemetry/instrumentation-express \
- @opentelemetry/instrumentation-http \
- @opentelemetry/instrumentation-pg \
- @opentelemetry/instrumentation-mongodb
+Rebuild Backend-container:
+-------------------------
+docker-compose up --build -d node-backend
+ docker-compose logs node-backend   
 
-
-
-
-3. Level 2: Connection (Days 3-4)
------------------------------------
-Goal: Connect two services and visualize the timeline.
-Concept: Context Propagation.
-
-If Service A calls Service B, how does Service B know it's part of Service A's trace?
-Answer: Service A adds a "Header" (HTTP Header) containing the Trace ID. This is called "Passing the Baton."
-The Project: "The Shop & The Inventory"
-We will stop using the Console (it's too messy). We will send data to Jaeger (a visualization tool).
-
-
-3.1 Run Two Services
----------------------------
-You need two terminals.
-
-3.2 Terminal 1 (The Inventory):
--------------------------------
-export SERVICE_NAME=inventory-service && export PORT=3001 && node app.js
-
-3.3 Terminal 2 (The Shop - Calls Inventory):
---------------------------------------------
-Modify app.js to call localhost:3001 using http.get.
-
-export SERVICE_NAME=shop-service && export PORT=3000 && node app.js
-
-
-Teacher's Question: Trigger the Shop service. Open Jaeger (http://localhost:16686).
-Do you see one trace with two different colors (services)?
-If yes, you have mastered Context Propagation.
-
-
-
-
-
-COMMANDS
---------------
-docker compose up -d --force-recreate
-
+ docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}"
