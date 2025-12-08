@@ -19,7 +19,7 @@ diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
 const OTLP_ENDPOINT = 'http://otel-collector:4318/v1/'; 
 
 const sdk = new NodeSDK({
-  serviceName: process.env.SERVICE_NAME || 'l5-service',
+  serviceName: process.env.SERVICE_NAME || 'node-express-backend',
   
   // 1. TRACE SAMPLING
   sampler: new ParentBasedSampler({
