@@ -8,7 +8,7 @@ services:
     image: jaegertracing/all-in-one:latest
     ports:
       - "16686:16686" # UI
-      - "14250:14250" # gRPC internal communication
+      - "14250:14250" # Internal communication
     networks:
       - obs-net
 
@@ -18,9 +18,11 @@ services:
   prometheus:
     image: prom/prometheus:latest
     command: 
+      # Fixed: Use double dashes
       - "--config.file=/etc/prometheus/prometheus.yaml"
-      - "--storage.tsdb.path=/prometheus"
+      - "--enable-feature=remote-write-receiver"
     volumes:
+      # Ensure your local file is named .yaml
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml
     ports:
       - "9090:9090"
@@ -32,14 +34,15 @@ services:
   # -----------------------------------------------------------
   loki:
     image: grafana/loki:2.9.2
+    command:
+      # Fixed: Use double dashes
+      - "-config.file=/etc/loki/local-config.yaml"
     ports:
       - "3100:3100"
     volumes:
-      - ./config/loki-local-config.yaml:/etc/loki/local-config.yaml
-      - loki-data:/loki/data
-    command: 
-      - "-config.file=/etc/loki/local-config.yaml"
-      - "-usage-stats.enabled=false"
+      # REMOVED the missing config file to prevent crash
+      # We only keep the data volume
+      - loki-data:/loki
     networks:
       - obs-net
 
@@ -50,10 +53,10 @@ services:
     image: grafana/grafana:latest
     ports:
       - "3001:3000"
-    # environment:
-    #   - GF_AUTH_ANONYMOUS_ENABLED=true
-    #   - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-    #   - GF_AUTH_DISABLE_LOGIN_FORM=true
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
     volumes:
       - ./config/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
     depends_on:
@@ -67,7 +70,7 @@ services:
   # 5. OPEN TELEMETRY COLLECTOR (The Brain)
   # -----------------------------------------------------------
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.99.0
+    image: otel/opentelemetry-collector-contrib:0.88.0
     command: ["--config=/etc/otel-config.yaml"]
     volumes:
       - ./config/otel-config.yaml:/etc/otel-config.yaml
@@ -83,23 +86,19 @@ services:
       - obs-net
 
   # -----------------------------------------------------------
-  # 6. NODEJS BACKEND APPLICATION
+  # 6. POSTGRES (The Database)
   # -----------------------------------------------------------
-  node-backend:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    ports:
-      - "3500:3500"
-    environment:
-      NODE_ENV: production
-      SERVICE_NAME: node-express-backend
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
-    depends_on:
-      - otel-collector
-    networks:
-      - obs-net
-
+  # postgres:
+  #   image: postgres:15-alpine
+  #   environment:
+  #     POSTGRES_USER: admin
+  #     POSTGRES_PASSWORD: admin
+  #     POSTGRES_DB: shop_db
+  #   ports:
+  #     - "5432:5432" # Expose to your Mac (Localhost)
+  #   networks:
+  #     - obs-net     
+      
 # -----------------------------------------------------------
 # NETWORKS & VOLUMES
 # -----------------------------------------------------------

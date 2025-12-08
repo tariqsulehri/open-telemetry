@@ -7,36 +7,43 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
+  # 1. Batches data to reduce network calls
   batch:
-    send_batch_size: 100
     timeout: 1s
-  attributes:
-    actions:
-    # Promotes OpenTelemetry attribute 'service.name' to a Loki label
-    - action: upsert
-      key: loki.attribute.labels
+
+  # 2. CRITICAL: Adds 'service_name' label for Loki
+  # Without this, Loki will drop the logs or Grafana won't find them.
+  resource:
+    attributes:
+    - action: insert
+      key: loki.resource.labels
       value: service.name
 
 exporters:
-  otlp/traces:
+  # Debug: Prints to Docker logs (for troubleshooting)
+  debug:
+    verbosity: detailed
+
+  # Jaeger: Sends Traces
+  otlp/jaeger:
     endpoint: "jaeger:4317"
     tls:
       insecure: true
 
+  # Prometheus: Exposes Metrics
   prometheus:
-    endpoint: "0.0.0.0:8889" # exposed for Prometheus scrape
+    endpoint: "0.0.0.0:8889"
 
+  # Loki: Sends Logs
   loki:
-    endpoint: "http://loki:3100/otlp/v1/logs" #correct port & path
-    tls:
-      insecure: true
+    endpoint: "http://loki:3100/loki/api/v1/push"
 
 service:
   pipelines:
     traces:
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ otlp/traces ]
+      exporters: [ otlp/jaeger ]
 
     metrics:
       receivers: [ otlp ]
@@ -45,5 +52,6 @@ service:
 
     logs:
       receivers: [ otlp ]
-      processors: [ batch, attributes ]
-      exporters: [ loki ]
+      # Note: 'resource' processor is added here to fix the Labels issue
+      processors: [ batch, resource ]
+      exporters: [ debug, loki ]
