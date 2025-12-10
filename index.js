@@ -28,6 +28,7 @@ app.get('/hello', (req, res) =>{
 });
 
 app.get('/rolldice', (req, res) => {
+    info('Received request for /rolldice endpoint.', { customTag: 'node.service.otel' });  
   const rolls = req.query.rolls ? parseInt(req.query.rolls.toString()) : NaN;
   if (isNaN(rolls)) {
     res

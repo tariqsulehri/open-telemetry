@@ -1,111 +1,121 @@
 version: '3.8'
 
-services:
-  # -----------------------------------------------------------
-  # 1. JAEGER (Traces)
-  # -----------------------------------------------------------
-  jaeger:
-    image: jaegertracing/all-in-one:latest
-    ports:
-      - "16686:16686" # UI
-      - "14250:14250" # Internal communication
-    networks:
-      - obs-net
+# -------------------------
+# Define networks so all services can resolve each other by name
+# -------------------------
+networks:
+  observability:
+    driver: bridge
 
-  # -----------------------------------------------------------
-  # 2. PROMETHEUS (Metrics)
-  # -----------------------------------------------------------
+services:
+
+  # -------------------------
+  # OpenTelemetry Collector
+  # -------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    container_name: otel-collector
+    volumes:
+      - ./config/otel-config.yaml:/etc/otel-collector-config.yaml
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "4317:4317"  # gRPC OTLP
+      - "4318:4318"  # HTTP OTLP
+      - "8889:8889"  # Prometheus metrics endpoint
+    networks:
+      - observability
+    restart: always
+
+  # -------------------------
+  # Prometheus
+  # -------------------------
   prometheus:
     image: prom/prometheus:latest
-    command: 
-      # Fixed: Use double dashes
-      - "--config.file=/etc/prometheus/prometheus.yaml"
-      - "--enable-feature=remote-write-receiver"
+    container_name: prometheus
     volumes:
-      # Ensure your local file is named .yaml
-      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
     networks:
-      - obs-net
+      - observability
+    restart: always
 
-  # -----------------------------------------------------------
-  # 3. LOKI (Logs)
-  # -----------------------------------------------------------
-  loki:
-    image: grafana/loki:2.9.2
-    command:
-      # Fixed: Use double dashes
-      - "-config.file=/etc/loki/local-config.yaml"
-    ports:
-      - "3100:3100"
-    volumes:
-      # REMOVED the missing config file to prevent crash
-      # We only keep the data volume
-      - loki-data:/loki
-    networks:
-      - obs-net
-
-  # -----------------------------------------------------------
-  # 4. GRAFANA (Visualization)
-  # -----------------------------------------------------------
+  # -------------------------
+  # Grafana
+  # -------------------------
   grafana:
     image: grafana/grafana:latest
+    container_name: grafana
     ports:
-      - "3001:3000"
+      - "3000:3000"
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_AUTH_DISABLE_LOGIN_FORM=true
-    volumes:
-      - ./config/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
-    depends_on:
-      - loki
-      - prometheus
-      - jaeger
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=changeme
     networks:
-      - obs-net
+      - observability
+    depends_on:
+      - prometheus
+      - loki
+      - jaeger
+    restart: always
 
-  # -----------------------------------------------------------
-  # 5. OPEN TELEMETRY COLLECTOR (The Brain)
-  # -----------------------------------------------------------
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.99.0
-    command: ["--config=/etc/otel-config.yaml"]
-    volumes:
-      - ./config/otel-config.yaml:/etc/otel-config.yaml
+  # -------------------------
+  # Loki for logs
+  # -------------------------
+  loki:
+    image: grafana/loki:2.9.1
+    container_name: loki
     ports:
-      - "4317:4317" # gRPC Receiver
-      - "4318:4318" # HTTP Receiver
-      - "8889:8889" # Prometheus Exporter
-    depends_on:
-      - loki
-      - jaeger
-      - prometheus
+      - "3100:3100"
     networks:
-      - obs-net
+      - observability
+    restart: always
 
-  # -----------------------------------------------------------
-  # 6. POSTGRES (The Database)
-  # -----------------------------------------------------------
-  # postgres:
-  #   image: postgres:15-alpine
-  #   environment:
-  #     POSTGRES_USER: admin
-  #     POSTGRES_PASSWORD: admin
-  #     POSTGRES_DB: shop_db
-  #   ports:
-  #     - "5432:5432" # Expose to your Mac (Localhost)
-  #   networks:
-  #     - obs-net     
-      
-# -----------------------------------------------------------
-# NETWORKS & VOLUMES
-# -----------------------------------------------------------
-networks:
-  obs-net:
-    driver: bridge
+  # -------------------------
+  # Jaeger for distributed traces
+  # -------------------------
+  jaeger:
+    image: jaegertracing/all-in-one:1.48
+    container_name: jaeger
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "14250:14250"  # gRPC collector
+    networks:
+      - observability
+    restart: always
 
-volumes:
-  loki-data:
-    driver: local
+  # -------------------------
+  # Container-level metrics: cAdvisor
+  # -------------------------
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - observability
+    restart: always
+
+  # -------------------------
+  # Host-level metrics: Node Exporter
+  # -------------------------
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.rootfs=/host'
+    volumes:
+      - /:/host:ro,rslave
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc:/host/etc:ro
+    networks:
+      - observability
+    restart: always

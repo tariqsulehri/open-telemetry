@@ -1,7 +1,23 @@
 global:
-  scrape_interval: 5s
+  scrape_interval: 15s # how often to scrape metrics
 
 scrape_configs:
+# 1. Scrape Prometheus itself
+- job_name: 'prometheus'
+  static_configs:
+  - targets: [ 'prometheus:9090' ]
+
+# 2. Scrape cAdvisor (container stats)
+- job_name: 'cadvisor'
+  static_configs:
+  - targets: [ 'cadvisor:8080' ]
+
+# 3. Scrape Node Exporter (host machine stats)
+- job_name: 'node-exporter'
+  static_configs:
+  - targets: [ 'node-exporter:9100' ]
+
+# 4. Scrape OpenTelemetry Collector (metrics)
 - job_name: 'otel-collector'
   static_configs:
   - targets: [ 'otel-collector:8889' ]

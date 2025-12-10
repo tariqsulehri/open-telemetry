@@ -7,12 +7,8 @@ receivers:
         endpoint: 0.0.0.0:4318
 
 processors:
-  # 1. Batches data to reduce network calls
   batch:
     timeout: 1s
-
-  # 2. CRITICAL: Adds 'service_name' label for Loki
-  # Without this, Loki will drop the logs or Grafana won't find them.
   resource:
     attributes:
     - action: insert
@@ -20,21 +16,14 @@ processors:
       value: service.name
 
 exporters:
-  # Debug: Prints to Docker logs (for troubleshooting)
   debug:
     verbosity: detailed
-
-  # Jaeger: Sends Traces
   otlp/jaeger:
     endpoint: "jaeger:4317"
     tls:
       insecure: true
-
-  # Prometheus: Exposes Metrics
   prometheus:
     endpoint: "0.0.0.0:8889"
-
-  # Loki: Sends Logs
   loki:
     endpoint: "http://loki:3100/loki/api/v1/push"
 
@@ -52,6 +41,5 @@ service:
 
     logs:
       receivers: [ otlp ]
-      # Note: 'resource' processor is added here to fix the Labels issue
       processors: [ batch, resource ]
       exporters: [ debug, loki ]
