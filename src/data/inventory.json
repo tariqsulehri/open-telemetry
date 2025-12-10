@@ -1,0 +1,72 @@
+[
+  {
+    "id": "item-001",
+    "name": "Ultrabook Pro 14",
+    "description": "Lightweight 14-inch ultrabook with 16GB RAM and 512GB SSD.",
+    "price": 1299.99,
+    "image": "https://unsplash.com/photos/black-and-silver-laptop-computer-LRE5ISpxtNY/download?force=true"
+  },
+  {
+    "id": "item-002",
+    "name": "Gaming Laptop X15",
+    "description": "High-performance 15.6-inch gaming laptop with RTX graphics.",
+    "price": 1899.5,
+    "image": "https://unsplash.com/photos/t4WDIdZ1C44/download?force=true"
+  },
+  {
+    "id": "item-003",
+    "name": "Pro Smartphone S",
+    "description": "6.5-inch OLED display smartphone with advanced camera system.",
+    "price": 799.0,
+    "image": "https://unsplash.com/photos/ZSPBhokqDMc/download?force=true"
+  },
+  {
+    "id": "item-004",
+    "name": "NoiseCancel Headphones",
+    "description": "Over-ear Bluetooth headphones with active noise cancellation.",
+    "price": 199.95,
+    "image": "https://unsplash.com/photos/black-headphones--mQ2_QphWjw/download?force=true"
+  },
+  {
+    "id": "item-005",
+    "name": "27-inch Monitor 4K",
+    "description": "27-inch 4K IPS monitor with HDR support and thin bezels.",
+    "price": 429.99,
+    "image": "https://unsplash.com/photos/DjUqTwvfBAs/download?force=true"
+  },
+  {
+    "id": "item-006",
+    "name": "Mechanical Keyboard K6",
+    "description": "Compact mechanical keyboard with RGB backlight and hot-swappable switches.",
+    "price": 119.49,
+    "image": "https://unsplash.com/photos/UhxVH3zTBfI/download?force=true"
+  },
+  {
+    "id": "item-007",
+    "name": "Wireless Mouse M3",
+    "description": "Ergonomic wireless mouse with adjustable DPI and long battery life.",
+    "price": 49.99,
+    "image": "https://unsplash.com/photos/white-and-gray-wireless-computer-mouse-TR6ZNWCsG38/download?force=true"
+  },
+  {
+    "id": "item-008",
+    "name": "Tablet Tab A",
+    "description": "10-inch tablet with crisp display, ideal for media and drawing.",
+    "price": 329.0,
+    "image": "https://unsplash.com/photos/PJno-Fg6vkw/download?force=true"
+  },
+  {
+    "id": "item-009",
+    "name": "Wireless Printer 2200",
+    "description": "All-in-one wireless printer with fast duplex printing.",
+    "price": 159.75,
+    "image": "https://unsplash.com/photos/igG4tbqKRx4/download?force=true"
+  },
+  {
+    "id": "item-010",
+    "name": "Compact Action Camera",
+    "description": "Rugged action camera with 4K recording and waterproof housing.",
+    "price": 249.0,
+    "image": "https://unsplash.com/photos/OMG1dTk_tiw/download?force=true"
+  }
+]
