@@ -1,13 +1,13 @@
 // Make sure instrumentation is loaded first
 
-require('./src/telemetry/instrumentation-l7'); 
+require('./src/telemetry/instrumentation-l7.js'); 
 
 const express = require('express');
 const { rollTheDice } = require('./dice.js');
 const app = express();
 const dotenv = require("dotenv");
 // --- UPDATED PATH ---
-const { info, error } = require('./src/loggers/logger'); // <-- Import the convenience wrappers
+const { info, error } = require('./src/loggers/logger.js'); // <-- Import the convenience wrappers
 
 dotenv.config();
 
@@ -15,7 +15,8 @@ dotenv.config();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-require('./src/startup/routes')(app);
+require('./src/startup/routes.js')(app);
+
 
 app.get('/hello', (req, res) =>{
     // Use the simplified 'info' function
@@ -27,7 +28,7 @@ app.get('/hello', (req, res) =>{
 });
 
 app.get('/rolldice', (req, res) => {
-  info('Received request for /rolldice endpoint.', { customTag: 'node.service.otel' });  
+    info('Received request for /rolldice endpoint.', { customTag: 'node.service.otel' });  
   const rolls = req.query.rolls ? parseInt(req.query.rolls.toString()) : NaN;
   if (isNaN(rolls)) {
     res
