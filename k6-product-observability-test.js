@@ -115,7 +115,7 @@ export function scenarioRequests() {
   console.log("Trace-Id (custom-span):", resSpan.headers["trace-id"]);
 
   // 5. Search Endpoint
-  let resSearch = http.get(`${BASE_URL}/search?name=tablet`);
+  let resSearch = http.get(`${BASE_URL}/search?name=Mechanical Keyboard K6`);
   responseTimeTrend.add(resSearch.timings.duration);
   if (!check(resSearch, { "Search 200": (r) => r.status === 200 })) {
     failedRequests.add(1);
@@ -123,7 +123,7 @@ export function scenarioRequests() {
   console.log("Trace-Id (search):", resSearch.headers["trace-id"]);
 
   // 6. Filter by Price Range
-  let resFilter = http.get(`${BASE_URL}/filter-by-price?min=100&max=500`);
+  let resFilter = http.get(`${BASE_URL}/filter-by-price?price=100`);
   responseTimeTrend.add(resFilter.timings.duration);
   if (!check(resFilter, { "Filter price 200": (r) => r.status === 200 })) {
     failedRequests.add(1);
