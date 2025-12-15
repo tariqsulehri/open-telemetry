@@ -1,5 +1,4 @@
-[
-  {
+ [{
     "id": "item-001",
     "name": "Ultrabook Pro 14",
     "description": "Lightweight 14-inch ultrabook with 16GB RAM and 512GB SSD.",
@@ -50,7 +49,7 @@
   },
   {
     "id": "item-008",
-    "name": "Tablet Tab A",
+    "name": "tablet",
     "description": "10-inch tablet with crisp display, ideal for media and drawing.",
     "price": 329.0,
     "image": "https://unsplash.com/photos/PJno-Fg6vkw/download?force=true"
@@ -69,4 +68,4 @@
     "price": 249.0,
     "image": "https://unsplash.com/photos/OMG1dTk_tiw/download?force=true"
   }
-]
+];
