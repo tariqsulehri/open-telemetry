@@ -1,6 +1,7 @@
 'use strict';
 
 const { NodeSDK } = require('@opentelemetry/sdk-node');
+const os = require('os'); // 👈 Import the OS module
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 
 // HTTP Exporters (Correct for Port 4318)
@@ -11,7 +12,7 @@ const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-http');
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { diag, DiagConsoleLogger, DiagLogLevel } = require('@opentelemetry/api');
 const { resourceFromAttributes } = require('@opentelemetry/resources');
-const { ATTR_SERVICE_NAME } = require('@opentelemetry/semantic-conventions');
+const { ATTR_SERVICE_NAME, ATTR_HOST_NAME } = require('@opentelemetry/semantic-conventions');
 
 // Enable console logging for OTEL internal errors (helps debugging)
 diag.setLogger(new DiagConsoleLogger(), DiagLogLevel.INFO);
@@ -39,6 +40,7 @@ const sdk = new NodeSDK({
   // Use the service name from Docker Env Var
   resource: resourceFromAttributes({
     [ATTR_SERVICE_NAME]: serviceName,
+    [ATTR_HOST_NAME]: os.hostname(),
   }),
   traceExporter,
   logExporter,

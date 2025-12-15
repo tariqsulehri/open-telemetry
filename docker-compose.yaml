@@ -71,9 +71,9 @@ services:
       - observability
     restart: always
 
-  # -------------------------
+  # -------------------------------
   # Jaeger for distributed traces
-  # -------------------------
+  # -------------------------------
   jaeger:
     image: jaegertracing/all-in-one:1.48
     container_name: jaeger
@@ -83,6 +83,25 @@ services:
     networks:
       - observability
     restart: always
+
+  # -------------------------------
+  # Mimir for distributed traces
+  # -------------------------------
+  # 👇 1. ADD: Mimir Service Configuration (Single-Process Mode)
+  mimir:
+    image: grafana/mimir:2.11.0 # Use a stable image version
+    command:
+      - "-config.file=/etc/mimir/mimir-config.yaml"
+    ports:
+      # Expose the HTTP port (9009) for remote write and Grafana querying
+      - "9009:9009" 
+    volumes:
+      # Use a volume for persistent storage
+      - mimir-data:/data
+      # Map the configuration file
+      - ./mimir-config.yaml:/etc/mimir/mimir-config.yaml
+    networks:
+      - observability # Ensure it's on your existing network
 
   # -------------------------
   # Container-level metrics: cAdvisor
