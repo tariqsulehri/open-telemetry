@@ -7,26 +7,56 @@ services:
     user: "0:0"
     ports:
       - "3100:3100"
-      - "9095:9095"
     volumes:
       - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
       - ./loki-data:/var/loki
-    env_file:
-      - .env
+    networks:
+      - observability # 👈 ADDED
     command: -config.file=/etc/loki/loki-config.yaml
     restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"
+    networks:
+      - observability # 👈 KEPT
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+    ports:
+      - "9100:9100"
+    networks:
+      - observability # 👈 KEPT
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.99.0
     container_name: otel-collector
     command: ["--config", "/etc/otel-config.yaml"]
     ports:
-      - "4317:4317"  # OTLP gRPC
-      - "4318:4318"  # OTLP HTTP
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"
+      - "13133:13133"
     volumes:
       - ./config/otel-config.yaml:/etc/otel-config.yaml:ro
+    networks:
+      - observability # 👈 ADDED
     depends_on:
       - loki
+      - jaeger
     restart: unless-stopped
 
   grafana:
@@ -34,11 +64,8 @@ services:
     container_name: grafana
     ports:
       - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-      - GF_USERS_ALLOW_SIGN_UP=false
-    volumes:
-      - grafana-data:/var/lib/grafana
+    networks:
+      - observability # 👈 ADDED
     depends_on:
       - loki
       - prometheus
@@ -50,16 +77,19 @@ services:
     ports:
       - "9090:9090"
     volumes:
-      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro # 👈 NOTE: Fixed filename suffix .yml
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=15d'
-      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
-      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - observability # 👈 ADDED
     restart: unless-stopped
 
 volumes:
   grafana-data:
   prometheus-data:
+
+networks:
+  observability:
+    driver: bridge
+    name: observability

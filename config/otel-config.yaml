@@ -6,6 +6,14 @@ receivers:
       http:
         endpoint: 0.0.0.0:4318
 
+  prometheus:
+    config:
+      scrape_configs:
+      - job_name: 'node-exporter'
+        scrape_interval: 15s
+        static_configs:
+        - targets: [ 'node-exporter:9100' ]
+
 processors:
   batch:
     timeout: 1s
@@ -18,24 +26,38 @@ processors:
 exporters:
   debug:
     verbosity: detailed
+
+  # ✅ FIXED: Corrected YAML syntax and named it otlp/jaeger
   otlp/jaeger:
     endpoint: "jaeger:4317"
     tls:
       insecure: true
+
   prometheus:
     endpoint: "0.0.0.0:8889"
+
   loki:
     endpoint: "http://loki:3100/loki/api/v1/push"
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
 service:
+  extensions: [ health_check ] # 👈 Activate the extension
+  telemetry:
+    metrics:
+      level: detailed # Options: basic, normal, detailed
+      address: 0.0.0.0:8888
+
   pipelines:
     traces:
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ otlp/jaeger ]
+      exporters: [ otlp/jaeger ] # Matches the name above
 
     metrics:
-      receivers: [ otlp ]
+      receivers: [ otlp, prometheus ]
       processors: [ batch ]
       exporters: [ prometheus ]
 

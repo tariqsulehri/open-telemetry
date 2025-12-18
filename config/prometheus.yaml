@@ -24,9 +24,9 @@ scrape_configs:
 # ===========================
 # Scrape cAdvisor (Docker container stats)
 # ===========================
-- job_name: 'cadvisor'
-  static_configs:
-  - targets: [ 'cadvisor:8080' ]
+# - job_name: 'cadvisor'
+#   static_configs:
+#   - targets: [ 'cadvisor:8080' ]
 
 # ===========================
 # Scrape Node Exporter (host metrics)

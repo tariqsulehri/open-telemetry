@@ -1,5 +1,8 @@
 Commands:
 
+docker compose down --remove-orphans
+docker compose --env-file .env up -d
+
 const OTLP_ENDPOINT = 'http://otel-collector:4318/v1/';
 export SERVICE_NAME=shop-service && node service-a.js
 
