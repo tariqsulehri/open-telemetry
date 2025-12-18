@@ -22,7 +22,7 @@ app.get('/hello', (req, res) =>{
     info('Received request for /hello endpoint.', { customTag: 'node.service.otel' }); 
     
     setTimeout(() => {
-       res.send('Hello World')
+       res.json('Hello World')
     }, 500);
 });
 
@@ -35,7 +35,7 @@ app.get('/rolldice', (req, res) => {
       .send("Request parameter 'rolls' is missing or not a number.");
     return;
   }
-  res.send(JSON.stringify(rollTheDice(rolls, 1, 6)));
+  res.json(JSON.stringify(rollTheDice(rolls, 1, 6)));
 });
 
 

@@ -1,0 +1,7 @@
+type: S3
+config:
+  bucket: "org-observability-prometheus-metrics"
+  endpoint: "s3.us-east-1.amazonaws.com"
+  region: "us-east-1"
+  access_key: "" # Will use AWS_ACCESS_KEY_ID from environment
+  secret_key: "" # Will use AWS_SECRET_ACCESS_KEY from environment

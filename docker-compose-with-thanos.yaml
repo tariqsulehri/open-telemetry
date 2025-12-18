@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    user: "0:0"
+    ports:
+      - "3100:3100"
+      - "9095:9095"
+    volumes:
+      - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - ./loki-data:/var/loki
+    env_file:
+      - .env
+    command: -config.file=/etc/loki/loki-config.yaml
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    container_name: otel-collector
+    command: ["--config", "/etc/otel-config.yaml"]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - ./config/otel-config.yaml:/etc/otel-config.yaml:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--storage.tsdb.min-block-duration=2h'
+      - '--storage.tsdb.max-block-duration=2h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+  thanos-sidecar:
+    image: quay.io/thanos/thanos:latest
+    container_name: thanos-sidecar
+    volumes:
+      - prometheus-data:/prometheus
+      - ./config/thanos-storage.yaml:/etc/thanos/storage.yaml:ro
+    env_file:
+      - .env
+    command:
+      - 'sidecar'
+      - '--tsdb.path=/prometheus'
+      - '--prometheus.url=http://prometheus:9090'
+      - '--grpc-address=0.0.0.0:10901'
+      - '--http-address=0.0.0.0:10902'
+      - '--objstore.config-file=/etc/thanos/storage.yaml'
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  thanos-query:
+    image: quay.io/thanos/thanos:latest
+    container_name: thanos-query
+    ports:
+      - "10904:10904"
+    command:
+      - 'query'
+      - '--http-address=0.0.0.0:10904'
+      - '--grpc-address=0.0.0.0:10903'
+      - '--store=thanos-sidecar:10901'
+    depends_on:
+      - thanos-sidecar
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - loki
+      - prometheus
+      - thanos-query
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
+  prometheus-data:
