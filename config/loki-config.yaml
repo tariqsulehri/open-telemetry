@@ -1,0 +1,50 @@
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  path_prefix: /var/loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    s3:
+      bucketnames: org-observability-loki-logs
+      endpoint: s3.us-east-1.amazonaws.com
+      region: us-east-1
+      s3forcepathstyle: false
+
+ingester:
+  lifecycler:
+    ring:
+      kvstore:
+        store: inmemory
+      replication_factor: 1
+    final_sleep: 0s
+  chunk_idle_period: 1m
+  chunk_block_size: 262144
+  chunk_encoding: snappy
+  chunk_retain_period: 30s
+  max_chunk_age: 2m
+  wal:
+    dir: /var/loki/wal
+
+schema_config:
+  configs:
+  - from: 2024-01-01
+    store: tsdb
+    object_store: s3
+    schema: v13
+    index:
+      prefix: index_
+      period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /var/loki/index
+    cache_location: /var/loki/cache
+
+limits_config:
+  retention_period: 7d

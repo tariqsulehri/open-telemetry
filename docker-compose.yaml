@@ -1,140 +1,30 @@
 version: '3.8'
 
-# -------------------------
-# Define networks so all services can resolve each other by name
-# -------------------------
-networks:
-  observability:
-    driver: bridge
-
 services:
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    user: "0:0"
+    ports:
+      - "3100:3100"
+      - "9095:9095"
+    volumes:
+      - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
+      - ./loki-data:/var/loki
+    env_file:
+      - .env
+    command: -config.file=/etc/loki/loki-config.yaml
+    restart: unless-stopped
 
-  # -------------------------
-  # OpenTelemetry Collector
-  # -------------------------
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.99.0
     container_name: otel-collector
+    command: ["--config", "/etc/otel-config.yaml"]
+    ports:
+      - "4317:4317"  # OTLP gRPC
+      - "4318:4318"  # OTLP HTTP
     volumes:
-      - ./config/otel-config.yaml:/etc/otel-collector-config.yaml
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    ports:
-      - "4317:4317"  # gRPC OTLP
-      - "4318:4318"  # HTTP OTLP
-      - "8889:8889"  # Prometheus metrics endpoint
-    networks:
-      - observability
-    restart: always
-
-  # -------------------------
-  # Prometheus
-  # -------------------------
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    volumes:
-      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
-    networks:
-      - observability
-    restart: always
-
-  # -------------------------
-  # Grafana
-  # -------------------------
-  grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
-    ports:
-      - "3000:3000"
-    environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-    networks:
-      - observability
+      - ./config/otel-config.yaml:/etc/otel-config.yaml:ro
     depends_on:
-      - prometheus
       - loki
-      - jaeger
-    restart: always
-
-  # -------------------------
-  # Loki for logs
-  # -------------------------
-  loki:
-    image: grafana/loki:2.9.1
-    container_name: loki
-    ports:
-      - "3100:3100"
-    networks:
-      - observability
-    restart: always
-
-  # -------------------------------
-  # Jaeger for distributed traces
-  # -------------------------------
-  jaeger:
-    image: jaegertracing/all-in-one:1.48
-    container_name: jaeger
-    ports:
-      - "16686:16686"  # Jaeger UI
-      - "14250:14250"  # gRPC collector
-    networks:
-      - observability
-    restart: always
-
-  # -------------------------------
-  # Mimir for distributed traces
-  # -------------------------------
-  # 👇 1. ADD: Mimir Service Configuration (Single-Process Mode)
-  mimir:
-    image: grafana/mimir:2.11.0 # Use a stable image version
-    command:
-      - "-config.file=/etc/mimir/mimir-config.yaml"
-    ports:
-      # Expose the HTTP port (9009) for remote write and Grafana querying
-      - "9009:9009" 
-    volumes:
-      # Use a volume for persistent storage
-      - mimir-data:/data
-      # Map the configuration file
-      - ./mimir-config.yaml:/etc/mimir/mimir-config.yaml
-    networks:
-      - observability # Ensure it's on your existing network
-
-  # -------------------------
-  # Container-level metrics: cAdvisor
-  # -------------------------
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:latest
-    container_name: cadvisor
-    ports:
-      - "8080:8080"
-    volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-    networks:
-      - observability
-    restart: always
-
-  # -------------------------
-  # Host-level metrics: Node Exporter
-  # -------------------------
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: node-exporter
-    ports:
-      - "9100:9100"
-    command:
-      - '--path.rootfs=/host'
-    volumes:
-      - /:/host:ro,rslave
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /etc:/host/etc:ro
-    networks:
-      - observability
-    restart: always
+    restart: unless-stopped
