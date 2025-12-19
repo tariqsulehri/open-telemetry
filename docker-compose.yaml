@@ -47,6 +47,7 @@ services:
       - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
       - loki-data:/var/loki
     command: -config.file=/etc/loki/loki-config.yaml
+    env_file: .env
     networks:
       - observability
 
