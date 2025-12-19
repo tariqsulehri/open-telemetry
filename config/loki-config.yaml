@@ -69,9 +69,15 @@ storage_config:
     # Cache location to speed up index lookups for recent logs.
     cache_location: /var/loki/cache
 
-# The Compactor is the "Janitor" that manages data lifecycle.
+limits_config:
+  # Sets a 14-day retention for all logs
+  retention_period: 336h
+
 compactor:
-  # Temp directory for index merging and retention processing.
-  working_directory: /var/loki/compactor
-  # How often the compactor checks for old data to delete.
+  working_directory: /var/loki/retention
   compaction_interval: 10m
+  # CRITICAL: This must be true to actually delete files from S3
+  retention_enabled: true
+  retention_delete_delay: 2h
+  # Required when using S3 for retention
+  delete_request_store: s3
