@@ -1,3 +1,6 @@
+ docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+
 S3 BUCKERS:
 ---------------------------
 org-observability-backups
