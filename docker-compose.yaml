@@ -1,6 +1,42 @@
 version: '3.8'
 
 services:
+  # --- INGESTION ---
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    container_name: otel-collector
+    user: "0:0" # Add this line to run as root
+    command: ["--config=/etc/otel-config.yaml"]
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"   # Collector Metrics
+      - "13133:13133" # Health Check
+    volumes:
+      - ./config/otel-config.yaml:/etc/otel-config.yaml:ro
+      - otel-data:/var/lib/otelcol/persistence
+    networks:
+      - observability
+    depends_on:
+      - loki
+      - tempo
+    restart: unless-stopped
+
+  # --- STORAGE (Metrics, Logs, Traces) ---
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+    networks:
+      - observability
+
   loki:
     image: grafana/loki:latest
     container_name: loki
@@ -9,85 +45,53 @@ services:
       - "3100:3100"
     volumes:
       - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
-      - ./loki-data:/var/loki
-    networks:
-      - observability # 👈 ADDED
+      - loki-data:/var/loki
     command: -config.file=/etc/loki/loki-config.yaml
-    restart: unless-stopped
-
-  jaeger:
-    image: jaegertracing/all-in-one:latest
-    container_name: jaeger
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
-    ports:
-      - "16686:16686"
     networks:
-      - observability # 👈 KEPT
+      - observability
 
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: node-exporter
+  tempo:
+    image: grafana/tempo:latest
+    command: [ "-config.file=/etc/tempo.yaml", "-config.expand-env=true" ]
     volumes:
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /:/rootfs:ro
-    command:
-      - '--path.procfs=/host/proc'
-      - '--path.rootfs=/rootfs'
-      - '--path.sysfs=/host/sys'
+      - ./config/tempo-config.yaml:/etc/tempo.yaml
+      - ./tempo-data:/var/tempo
     ports:
-      - "9100:9100"
+      - "3200:3200" # Only expose Tempo's API/Ready/Search port
+    env_file: .env
     networks:
-      - observability # 👈 KEPT
+      - observability
 
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.99.0
-    container_name: otel-collector
-    command: ["--config", "/etc/otel-config.yaml"]
-    ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "8888:8888"
-      - "13133:13133"
-    volumes:
-      - ./config/otel-config.yaml:/etc/otel-config.yaml:ro
-    networks:
-      - observability # 👈 ADDED
-    depends_on:
-      - loki
-      - jaeger
-    restart: unless-stopped
-
+  # --- VISUALIZATION ---
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     ports:
       - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      # BEST PRACTICE: Map folder to folder
+      # - ./config/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
+      - ./config:/etc/grafana/provisioning/datasources:ro
     networks:
-      - observability # 👈 ADDED
+      - observability
     depends_on:
       - loki
       - prometheus
-    restart: unless-stopped
+      - tempo
 
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro # 👈 NOTE: Fixed filename suffix .yml
-      - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
     networks:
-      - observability # 👈 ADDED
-    restart: unless-stopped
+      - observability
 
 volumes:
   grafana-data:
   prometheus-data:
+  tempo-data:
+  loki-data:
+  otel-data:
 
 networks:
   observability:

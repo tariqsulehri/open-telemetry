@@ -1,0 +1,36 @@
+server:
+  http_listen_port: 3200
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  lifecycler:
+    ring:
+      replication_factor: 1
+      kvstore:
+        store: inmemory
+    final_sleep: 0s
+
+storage:
+  trace:
+    backend: s3
+    s3:
+      bucket: org-observability-tempo-traces
+      endpoint: s3.us-east-1.amazonaws.com
+      region: us-east-1
+      access_key: ${AWS_ACCESS_KEY_ID}
+      secret_key: ${AWS_SECRET_ACCESS_KEY}
+    wal:
+      path: /var/tempo/wal
+    # CORRECT LOCATION FOR SEARCH IN V2.x
+    search: {}
+
+# Some versions allow search settings here, but start with it 
+# inside storage.trace first as it's more universal.
+# querier:
+#   max_concurrent_queries: 10

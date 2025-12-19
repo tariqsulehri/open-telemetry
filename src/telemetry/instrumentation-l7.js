@@ -11,6 +11,7 @@ const { OTLPLogExporter } = require('@opentelemetry/exporter-logs-otlp-http');
 
 const { PeriodicExportingMetricReader } = require('@opentelemetry/sdk-metrics');
 const { diag, DiagConsoleLogger, DiagLogLevel } = require('@opentelemetry/api');
+const { WinstonInstrumentation } = require('@opentelemetry/instrumentation-winston');
 const { resourceFromAttributes } = require('@opentelemetry/resources');
 const { ATTR_SERVICE_NAME, ATTR_HOST_NAME } = require('@opentelemetry/semantic-conventions');
 
@@ -50,9 +51,13 @@ const sdk = new NodeSDK({
     exportIntervalMillis: 10000, // Export metrics every 10 seconds
   }),
   instrumentations: [
-    // This automatically loads Express, Http, Pg, Mongo, Redis, etc.
     getNodeAutoInstrumentations(), 
-    // REMOVED: new ExpressInstrumentation() (It is already included above)
+    new WinstonInstrumentation({
+      // This automatically adds trace_id, span_id, and trace_flags 
+      // to every log message metadata!
+      logFieldPlaceholder: 'otel', 
+      enabled: true,
+    })
   ],
 });
 

@@ -2,46 +2,41 @@
 # Global Settings
 # ===========================
 global:
-  scrape_interval: 15s # how often to scrape metrics
-  evaluation_interval: 15s # how often to evaluate rules
+  scrape_interval: 15s
+  evaluation_interval: 15s
   external_labels:
     cluster: 'production'
     environment: 'prod'
 
-# ===========================
-# Scrape Prometheus itself
-# ===========================
 scrape_configs:
+# --- SELF MONITORING ---
 - job_name: 'prometheus'
   static_configs:
   - targets: [ 'prometheus:9090' ]
-
-# Loki metrics
-- job_name: 'loki'
-  static_configs:
-  - targets: [ 'loki:3100' ]
-
-# ===========================
-# Scrape cAdvisor (Docker container stats)
-# ===========================
-# - job_name: 'cadvisor'
-#   static_configs:
-#   - targets: [ 'cadvisor:8080' ]
-
-# ===========================
-# Scrape Node Exporter (host metrics)
-# ===========================
-- job_name: 'node-exporter'
-  static_configs:
-  - targets: [ 'node-exporter:9100' ]
 
 - job_name: 'grafana'
   static_configs:
   - targets: [ 'grafana:3000' ]
 
-# ===========================
-# Scrape OpenTelemetry Collector
-# ===========================
-- job_name: 'otel-collector'
+# --- STORAGE LAYER MONITORING ---
+- job_name: 'loki'
+  static_configs:
+  - targets: [ 'loki:3100' ]
+
+- job_name: 'tempo' # ✅ ADDED: Monitor Tempo's health & ingestion rates
+  static_configs:
+  - targets: [ 'tempo:3200' ]
+
+# --- INFRASTRUCTURE LAYER ---
+- job_name: 'node-exporter'
+  static_configs:
+  - targets: [ 'node-exporter:9100' ]
+
+# --- TELEMETRY PIPELINE MONITORING ---
+- job_name: 'otel-collector-telemetry' # ✅ REFINED: Internal health of the collector
+  static_configs:
+  - targets: [ 'otel-collector:8888' ]
+
+- job_name: 'otel-collector-app-metrics' # ✅ REFINED: Metrics passing THROUGH the collector
   static_configs:
   - targets: [ 'otel-collector:8889' ]

@@ -17,44 +17,55 @@ receivers:
 processors:
   batch:
     timeout: 1s
+    send_batch_size: 1024
   resource:
     attributes:
     - action: insert
       key: loki.resource.labels
       value: service.name
 
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  # ✅ ARCHITECT TIP: File storage is critical for "Persistence Plane"
+  # It prevents data loss if Tempo or Loki restarts.
+  file_storage:
+    directory: /var/lib/otelcol/persistence
+    timeout: 10s
+
 exporters:
   debug:
     verbosity: detailed
 
-  # ✅ FIXED: Corrected YAML syntax and named it otlp/jaeger
-  otlp/jaeger:
-    endpoint: "jaeger:4317"
+  # ✅ UPDATED: Replaced Jaeger with Tempo
+  otlp/tempo:
+    endpoint: "tempo:4317"
     tls:
       insecure: true
+    sending_queue:
+      storage: file_storage # Links to the extension above
 
   prometheus:
     endpoint: "0.0.0.0:8889"
 
   loki:
     endpoint: "http://loki:3100/loki/api/v1/push"
-
-extensions:
-  health_check:
-    endpoint: 0.0.0.0:13133
+    sending_queue:
+      storage: file_storage
 
 service:
-  extensions: [ health_check ] # 👈 Activate the extension
+  # ✅ UPDATED: Reactivated file_storage
+  extensions: [ health_check, file_storage ]
   telemetry:
     metrics:
-      level: detailed # Options: basic, normal, detailed
+      level: detailed
       address: 0.0.0.0:8888
 
   pipelines:
     traces:
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ otlp/jaeger ] # Matches the name above
+      exporters: [ otlp/tempo ] # ✅ Matches the new Tempo exporter
 
     metrics:
       receivers: [ otlp, prometheus ]

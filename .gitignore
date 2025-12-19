@@ -8,6 +8,10 @@ node_modules/
 dist/
 coverage/
 loki-data/
+otel-data/
+dashbaord_garfana/
+tempo-data/
+
 app.config.keys
 
 # Compiled Java class files
