@@ -14,7 +14,7 @@ ingester:
       replication_factor: 1
       kvstore:
         store: inmemory
-    final_sleep: 0s
+    final_sleep: 0s # Removes the 15s wait
 
 storage:
   trace:
@@ -27,10 +27,11 @@ storage:
       secret_key: ${AWS_SECRET_ACCESS_KEY}
     wal:
       path: /var/tempo/wal
-    # CORRECT LOCATION FOR SEARCH IN V2.x
-    search: {}
 
-# Some versions allow search settings here, but start with it 
-# inside storage.trace first as it's more universal.
-# querier:
-#   max_concurrent_queries: 10
+# ❌ REMOVE THE ROOT 'search:' BLOCK FROM HERE
+# Search is now built-in and always on in Tempo 2.x
+
+overrides:
+  defaults:
+    ingestion:
+      max_traces_per_user: 10000
