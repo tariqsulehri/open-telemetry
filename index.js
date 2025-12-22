@@ -33,35 +33,60 @@ app.get('/rolldice', (req, res) => {
     res.status(400).send("Request parameter 'rolls' is missing or not a number.");
     return;
   }
-
   // 4. Pass it to your logic
   res.json(JSON.stringify(rollTheDice(rolls, 1, 6)));
 });
 
-// app.get('/rolldice', (req, res) => {
-//   info('Processing dice roll request', { rolls: req.query.rolls });  
-//   const rolls = req.query.rolls ? parseInt(req.query.rolls.toString()) : NaN;
-  
-//   if (isNaN(rolls)) {
-//     warn('Invalid roll attempt: missing parameter');
-//     res.status(400).send("Request parameter 'rolls' is missing or not a number.");
-//     return;
-//   }
-//   res.json(JSON.stringify(rollTheDice(rolls, 1, 6)));
-// });
-
-// --- New Testing & Chaos Routes ---
-
 /**
  * 1. SIMULATED ERROR: For testing Loki Error highlighting & Tempo error spans
  */
-app.get('/error', (req, res) => {
+app.get('/error_500', (req, res) => {
     try {
         error('A critical failure occurred!', { detail: 'Database connection simulated timeout' });
         throw new Error("Simulated Backend Crash");
     } catch (e) {
         error(`Caught Exception: ${e.message}`);
         res.status(500).json({ error: true, message: e.message });
+    }
+});
+
+app.get('/error_400', (req, res) => {
+    try {
+        error('A Bad request!', { detail: 'Invalid request format/data provided' });
+        throw new Error("Bad Request");
+    } catch (e) {
+        error(`Caught Exception: ${e.message}`);
+        res.status(400).json({ error: true, message: e.message });
+    }
+});
+
+app.get('/error_403', (req, res) => {
+    try {
+        error('Forbidden!', { detail: 'Access denied...' });
+        throw new Error("Bad Request");
+    } catch (e) {
+        error(`Forbidden!: ${e.message}`);
+        res.status(403).json({ error: true, message: e.message });
+    }
+});
+
+app.get('/error_404', (req, res) => {
+    try {
+        error('Not Found!', { detail: 'Requested resource not found.. ...' });
+        throw new Error("Bad Request");
+    } catch (e) {
+        error(`Not Found!: ${e.message}`);
+        res.status(404).json({ error: true, message: e.message });
+    }
+});
+
+app.get('/error_408', (req, res) => {
+    try {
+        error('Time Out!', { detail: 'Requested time out.. ...' });
+        throw new Error("Time out!");
+    } catch (e) {
+        error(`Time out!: ${e.message}`);
+        res.status(408).json({ error: true, message: e.message });
     }
 });
 
@@ -80,6 +105,7 @@ app.get('/slow-search', (req, res) => {
         info('Search completed successfully.');
         res.json({ results: [], time: '800ms' });
     }, 800);
+
 });
 
 /**
@@ -97,7 +123,6 @@ app.get('/random-status', (req, res) => {
     
     res.status(randomCode).send(`Status returned: ${randomCode}`);
 });
-
 
 let nodePort = process.env.PORT || 3500; 
 
