@@ -1,42 +1,82 @@
-# ===========================
-# Global Settings
-# ===========================
-global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
-  external_labels:
-    cluster: 'production'
-    environment: 'prod'
+# ==============================================================================
+# PROMETHEUS CONFIGURATION - PRODUCTION ENVIRONMENT
+# Purpose: Centralized metrics collection for the E-com Observability Stack
+# ==============================================================================
 
+global:
+  scrape_interval: 15s # How often to fetch metrics from targets
+  evaluation_interval: 15s # How often to evaluate alerting rules
+  scrape_timeout: 10s # Timeout for a single scrape request
+
+  # External labels allow for easier identification in multi-cluster environments
+  external_labels:
+    cluster: production
+    environment: prod
+    owner: devops-team
+
+# ==============================================================================
+# RULE FILES
+# ==============================================================================
+# Load alerting and recording rules. 
+# Includes: High CPU, Disk I/O Latency, and Application 5xx Errors.
+rule_files:
+- "/etc/prometheus/prometheus_rules/prometheus_rules.yaml"
+
+# ==============================================================================
+# SCRAPE CONFIGURATIONS
+# ==============================================================================
 scrape_configs:
+
 # --- SELF MONITORING ---
+# Monitor Prometheus itself to ensure the monitoring system is healthy
 - job_name: 'prometheus'
   static_configs:
   - targets: [ 'prometheus:9090' ]
 
+# --- VISUALIZATION LAYER ---
 - job_name: 'grafana'
   static_configs:
   - targets: [ 'grafana:3000' ]
 
-# --- STORAGE LAYER MONITORING ---
+# --- STORAGE & LOGGING ---
 - job_name: 'loki'
   static_configs:
   - targets: [ 'loki:3100' ]
 
-- job_name: 'tempo' # ✅ ADDED: Monitor Tempo's health & ingestion rates
+- job_name: 'tempo'
   static_configs:
   - targets: [ 'tempo:3200' ]
 
-# --- INFRASTRUCTURE LAYER ---
+# --- INFRASTRUCTURE MONITORING (Host & Hardware) ---
+# node-exporter provides OS-level metrics (CPU, RAM, Disk, Network)
 - job_name: 'node-exporter'
+  relabel_configs:
+  - source_labels: [ __address__ ]
+    target_label: instance
+    replacement: 'physical-host'
   static_configs:
   - targets: [ 'node-exporter:9100' ]
 
-# --- TELEMETRY PIPELINE MONITORING ---
-- job_name: 'otel-collector-telemetry' # ✅ REFINED: Internal health of the collector
+# cAdvisor provides container-level resource usage and isolation
+- job_name: 'cadvisor'
+  relabel_configs:
+  - source_labels: [ __address__ ]
+    target_label: instance
+    replacement: 'docker-engine'
+  static_configs:
+  - targets: [ 'cadvisor:8080' ]
+
+# --- TELEMETRY PIPELINE (OpenTelemetry) ---
+# Internal metrics for the Collector's own performance (Batching, Queue size)
+- job_name: 'otel-collector-telemetry'
+  metric_relabel_configs:
+  - source_labels: [ __name__ ]
+    regex: 'otelcol_processor_batch_.*'
+    action: keep
   static_configs:
   - targets: [ 'otel-collector:8888' ]
 
-- job_name: 'otel-collector-app-metrics' # ✅ REFINED: Metrics passing THROUGH the collector
+# Application-level metrics exported via OTLP from Node.js
+- job_name: 'otel-collector-app-metrics'
   static_configs:
   - targets: [ 'otel-collector:8889' ]

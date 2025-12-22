@@ -1,0 +1,39 @@
+# ==============================================================================
+# PROMETHEUS ALERTING RULES
+# Severity Levels: critical (P1), warning (P2)
+# ==============================================================================
+
+groups:
+- name: Infrastructure_Alerts
+  rules:
+  # --- PROCESSOR HEALTH ---
+  - alert: HostHighCpuLoad
+    expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) > 85
+    for: 5m
+    labels:
+      severity: warning
+    annotations:
+      summary: "Host CPU usage is high"
+      description: "CPU load on {{ $labels.instance }} is currently {{ $value | printf \"%.2f\" }}%."
+
+  # --- DISK HEALTH ---
+  - alert: HostDiskFillingUp
+    expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 15
+    for: 2m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Disk space is running low"
+      description: "Less than 15% space remaining on {{ $labels.device }}."
+
+- name: Application_Alerts
+  rules:
+  # --- HTTP 500 ERRORS ---
+  - alert: NodeJsCriticalErrorRate
+    expr: rate(http_server_duration_count{status_code=~"5.."}[1m]) > 0.1
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: "Internal Server Errors Detected"
+      description: "Service {{ $labels.service_name }} is experiencing a 5xx error rate of {{ $value }} req/sec."

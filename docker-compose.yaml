@@ -1,17 +1,23 @@
 version: '3.8'
 
+# Note: This stack requires a .env file containing AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+# for S3 storage backends in Loki and Tempo.
+
 services:
-  # --- INGESTION ---
+
+  # ==========================================================
+  # INGESTION LAYER (Telemetry Collection)
+  # ==========================================================
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.99.0
     container_name: otel-collector
-    user: "0:0" # Add this line to run as root
+    user: "0:0" # Required for persistence volume permissions
     command: ["--config=/etc/otel-config.yaml"]
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "8888:8888"   # Collector Metrics
-      - "13133:13133" # Health Check
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8888:8888"   # Collector internal metrics
+      - "13133:13133" # Health check extension
     volumes:
       - ./config/otel-config.yaml:/etc/otel-config.yaml:ro
       - otel-data:/var/lib/otelcol/persistence
@@ -22,48 +28,96 @@ services:
       - tempo
     restart: unless-stopped
 
-  # --- STORAGE (Metrics, Logs, Traces) ---
+  # ==========================================================
+  # STORAGE LAYER (Metrics, Logs, Traces)
+  # ==========================================================
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle' # 💡 Allows: curl -X POST http://localhost:9090/-/reload
     ports:
       - "9090:9090"
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus_rules:/etc/prometheus/prometheus_rules:ro
       - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=30d'
     networks:
       - observability
+    restart: unless-stopped
 
   loki:
     image: grafana/loki:latest
     container_name: loki
     user: "0:0"
+    command: -config.file=/etc/loki/loki-config.yaml -config.expand-env=true
     ports:
       - "3100:3100"
     volumes:
       - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
       - loki-data:/var/loki
-    command: -config.file=/etc/loki/loki-config.yaml
     env_file: .env
     networks:
       - observability
+    restart: unless-stopped
 
   tempo:
     image: grafana/tempo:latest
-    command: [ "-config.file=/etc/tempo.yaml", "-config.expand-env=true" ]
+    container_name: tempo
+    command: ["-config.file=/etc/tempo.yaml", "-config.expand-env=true"]
+    ports:
+      - "3200:3200" # Tempo API and Ready check
     volumes:
       - ./config/tempo-config.yaml:/etc/tempo.yaml
       - ./tempo-data:/var/tempo
-    ports:
-      - "3200:3200" # Only expose Tempo's API/Ready/Search port
     env_file: .env
     networks:
       - observability
+    restart: unless-stopped
 
-  # --- VISUALIZATION ---
+  # ==========================================================
+  # INFRASTRUCTURE LAYER (Hardware & Container Metrics)
+  # ==========================================================
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    command:
+      - '--path.rootfs=/host'
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - observability
+    restart: unless-stopped
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    container_name: cadvisor
+    privileged: true
+    security_opt:
+      - label:disable
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+      - /etc/machine-id:/etc/machine-id:ro          # 👈 Added for UUID fix
+      - /var/lib/dbus/machine-id:/var/lib/dbus/machine-id:ro # 👈 Added for UUID fix
+    devices:
+      - /dev/kmsg
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ==========================================================
+  # VISUALIZATION LAYER
+  # ==========================================================
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -71,22 +125,19 @@ services:
       - "3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
-      # BEST PRACTICE: Map folder to folder
-      # - ./config/grafana-datasource.yaml:/etc/grafana/provisioning/datasources/datasources.yaml:ro
       - ./config:/etc/grafana/provisioning/datasources:ro
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true # Optional: for easier local dev
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     networks:
       - observability
     depends_on:
       - loki
       - prometheus
       - tempo
+    restart: unless-stopped
 
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: node-exporter
-    networks:
-      - observability
-
+# --- Persistent Storage Definitions ---
 volumes:
   grafana-data:
   prometheus-data:
@@ -94,6 +145,7 @@ volumes:
   loki-data:
   otel-data:
 
+# --- Global Network Definition ---
 networks:
   observability:
     driver: bridge
