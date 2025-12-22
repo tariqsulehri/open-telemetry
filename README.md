@@ -1,4 +1,5 @@
- docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}"
+docker compose down && docker compose --env-file .env up -d
+docker ps --format "table {{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 
 S3 BUCKERS:

@@ -1,39 +1,57 @@
 # ==============================================================================
-# PROMETHEUS ALERTING RULES
-# Severity Levels: critical (P1), warning (P2)
+# PROMETHEUS ALERTING RULES - PRODUCTION
+# Hierarchy: Infrastructure (Host) -> Container -> Application
 # ==============================================================================
 
 groups:
 - name: Infrastructure_Alerts
   rules:
-  # --- PROCESSOR HEALTH ---
+  # --- CPU MONITORING ---
+  # Logic: Calculate non-idle time across all cores per instance.
   - alert: HostHighCpuLoad
     expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) > 85
     for: 5m
     labels:
       severity: warning
+      layer: infrastructure
     annotations:
-      summary: "Host CPU usage is high"
-      description: "CPU load on {{ $labels.instance }} is currently {{ $value | printf \"%.2f\" }}%."
+      summary: "High CPU usage on {{ $labels.instance }}"
+      description: "CPU load is consistently above 85% (current: {{ $value | printf \"%.2f\" }}%)."
 
-  # --- DISK HEALTH ---
+  # --- DISK MONITORING ---
+  # Logic: Detect disks with less than 15% available space.
   - alert: HostDiskFillingUp
     expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 15
     for: 2m
     labels:
       severity: critical
+      layer: infrastructure
     annotations:
-      summary: "Disk space is running low"
-      description: "Less than 15% space remaining on {{ $labels.device }}."
+      summary: "Critical Disk Space on {{ $labels.device }}"
+      description: "Storage on {{ $labels.instance }} is nearly full (current: {{ $value | printf \"%.2f\" }}% remaining)."
 
 - name: Application_Alerts
   rules:
-  # --- HTTP 500 ERRORS ---
+  # --- HTTP ERROR RATES ---
+  # Logic: Monitor OTLP metrics for server-side crashes (5xx status codes).
+  # Threshold: > 0.1 req/sec indicates a persistent failure.
   - alert: NodeJsCriticalErrorRate
     expr: rate(http_server_duration_count{status_code=~"5.."}[1m]) > 0.1
     for: 1m
     labels:
       severity: critical
+      layer: application
     annotations:
-      summary: "Internal Server Errors Detected"
-      description: "Service {{ $labels.service_name }} is experiencing a 5xx error rate of {{ $value }} req/sec."
+      summary: "Elevated 5xx Error Rate in {{ $labels.service_name }}"
+      description: "Application is returning 5xx errors at a rate of {{ $value | printf \"%.2f\" }} req/sec."
+
+  # --- TRACE LATENCY ---
+  # Logic: Alert if 95th percentile of request duration exceeds 1 second.
+  - alert: SlowTraceLatency
+    expr: histogram_quantile(0.95, sum(rate(http_server_duration_bucket[5m])) by (le, service_name)) > 1000
+    for: 2m
+    labels:
+      severity: warning
+    annotations:
+      summary: "High Latency Detected"
+      description: "95% of requests in {{ $labels.service_name }} are slower than 1s."

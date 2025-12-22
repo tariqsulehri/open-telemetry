@@ -27,7 +27,7 @@ processors:
 extensions:
   health_check:
     endpoint: 0.0.0.0:13133
-  # ✅ ARCHITECT TIP: File storage is critical for "Persistence Plane"
+  # ARCHITECT TIP: File storage is critical for "Persistence Plane"
   # It prevents data loss if Tempo or Loki restarts.
   file_storage:
     directory: /var/lib/otelcol/persistence
@@ -43,6 +43,7 @@ exporters:
     tls:
       insecure: true
     sending_queue:
+      enabled: true
       storage: file_storage # Links to the extension above
 
   prometheus:
@@ -51,6 +52,7 @@ exporters:
   loki:
     endpoint: "http://loki:3100/loki/api/v1/push"
     sending_queue:
+      enabled: true
       storage: file_storage
 
 service:
@@ -65,7 +67,7 @@ service:
     traces:
       receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ otlp/tempo ] # ✅ Matches the new Tempo exporter
+      exporters: [ otlp/tempo ] # Matches the new Tempo exporter
 
     metrics:
       receivers: [ otlp, prometheus ]

@@ -61,6 +61,10 @@ services:
       - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
       - loki-data:/var/loki
     env_file: .env
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
     networks:
       - observability
     restart: unless-stopped
@@ -75,6 +79,10 @@ services:
       - ./config/tempo-config.yaml:/etc/tempo.yaml
       - ./tempo-data:/var/tempo
     env_file: .env
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
     networks:
       - observability
     restart: unless-stopped
