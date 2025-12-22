@@ -1,29 +1,24 @@
-# Disable multi-tenancy. When false, all logs are stored under the "fake" tenant ID.
 auth_enabled: false
 
 server:
-  # The port Loki will listen on for HTTP traffic (API and Grafana queries).
   http_listen_port: 3100
-  # Log level for Loki's own internal process logs (info, warn, error, debug).
+  grpc_listen_port: 9096
   log_level: info
 
 common:
-  # Root directory where Loki stores internal data like the cluster ID.
+  # instance_addr: 0.0.0.0 # Change from 127.0.0.1 to 0.0.0.0
   path_prefix: /var/loki
-  # Number of copies of each log to store. 1 is fine for single-node setups.
   replication_factor: 1
   ring:
     kvstore:
-      # Use in-memory ring for single-binary mode. Distributed needs Consul/Etcd.
       store: inmemory
   storage:
     s3:
-      # The name of your existing AWS S3 bucket.
       bucketnames: org-observability-loki-logs
-      # The regional endpoint for S3.
       endpoint: s3.us-east-1.amazonaws.com
       region: us-east-1
-      # Set to false for AWS S3. Set to true if using Minio/on-prem.
+      # access_key_id: ${AWS_ACCESS_KEY_ID}
+      # secret_access_key: ${AWS_SECRET_ACCESS_KEY}
       s3forcepathstyle: false
 
 ingester:
@@ -32,52 +27,36 @@ ingester:
       kvstore:
         store: inmemory
       replication_factor: 1
-    # How long to wait before shutting down. 0s is fine for simple setups.
     final_sleep: 0s
-  # How long a log chunk stays in memory without receiving new logs before flushing.
   chunk_idle_period: 1m
-  # The max size of a log chunk before it's cut and sent to S3.
   chunk_block_size: 262144
-  # Compression algorithm (snappy is the 2025 standard for speed).
   chunk_encoding: snappy
-  # How long to keep a chunk in memory after it has been flushed to S3.
   chunk_retain_period: 30s
-  # The maximum age of a chunk before it is forced to flush to S3.
   max_chunk_age: 2m
   wal:
-    # Write Ahead Log (WAL) prevents data loss if Loki crashes before flushing to S3.
     dir: /var/loki/wal
 
 schema_config:
   configs:
-  - from: 2024-01-01
-    # TSDB is the modern, high-performance index type for Loki 3.x.
+  - from: "2024-01-01"
     store: tsdb
-    # Tells Loki to store the actual log chunks in S3.
     object_store: s3
-    # v13 is the schema required for TSDB and modern features.
     schema: v13
     index:
       prefix: index_
-      # Create a new index file every 24 hours.
       period: 24h
 
 storage_config:
   tsdb_shipper:
-    # Local directory where the active index is built before being "shipped" to S3.
     active_index_directory: /var/loki/index
-    # Cache location to speed up index lookups for recent logs.
     cache_location: /var/loki/cache
 
 limits_config:
-  # Sets a 14-day retention for all logs
-  retention_period: 336h
+  retention_period: 336h # 14 Days
+  allow_structured_metadata: true
 
 compactor:
-  working_directory: /var/loki/retention
+  working_directory: /var/loki/compactor
   compaction_interval: 10m
-  # CRITICAL: This must be true to actually delete files from S3
   retention_enabled: true
-  retention_delete_delay: 2h
-  # Required when using S3 for retention
   delete_request_store: s3
