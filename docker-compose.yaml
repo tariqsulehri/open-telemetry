@@ -1,27 +1,32 @@
 version: '3.8'
 
-# Note: This stack requires a .env file containing AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
-# for S3 storage backends in Loki and Tempo.
+# ==============================================================================
+# OBSERVABILITY STACK: DOCKER COMPOSE
+# ==============================================================================
+# Purpose: Orchestrates the Full LGP (Loki, Grafana, Prometheus/Tempo) Stack.
+# Note: Requires a .env file for AWS S3 authentication.
+# ==============================================================================
 
 services:
 
-  # ==========================================================
-  # INGESTION LAYER (Telemetry Collection)
-  # ==========================================================
+  # ----------------------------------------------------------------------------
+  # INGESTION LAYER: OpenTelemetry Collector
+  # Acts as the central gateway for all app traces, logs, and metrics.
+  # ----------------------------------------------------------------------------
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.99.0
     container_name: otel-collector
-    user: "0:0" # Required for persistence volume permissions
+    user: "0:0" # Elevate to root to manage persistent volume permissions
     command: ["--config=/etc/otel-config.yaml"]
     ports:
-      - "4317:4317"   # OTLP gRPC receiver
-      - "4318:4318"   # OTLP HTTP receiver
-      - "8888:8888"   # Collector internal metrics
-      - "8889:8889"   # Prometheus Metrics
-      - "13133:13133" # Health check extension
+      - "4317:4317"   # OTLP gRPC: Primary for high-performance tracing
+      - "4318:4318"   # OTLP HTTP: Used by web apps or legacy clients
+      - "8888:8888"   # Internal: Collector's own health metrics
+      - "8889:8889"   # Prometheus Exporter: Where Prometheus scrapes app metrics
+      - "13133:13133" # Health Check: Used by Docker/K8s for liveness probes
     volumes:
       - ./config/otel-config.yaml:/etc/otel-config.yaml:ro
-      - otel-data:/var/lib/otelcol/persistence
+      - otel-data:/var/lib/otelcol/persistence # Buffer for "Retry on Failure" data
     networks:
       - observability
     depends_on:
@@ -29,18 +34,18 @@ services:
       - tempo
     restart: unless-stopped
 
-  # ==========================================================
-  # STORAGE LAYER (Metrics, Logs, Traces)
-  # ==========================================================
+  # ----------------------------------------------------------------------------
+  # STORAGE LAYER: Metrics (Prometheus)
+  # ----------------------------------------------------------------------------
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=30d'
+      - '--storage.tsdb.retention.time=30d' # Retain local metrics for 30 days
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--web.enable-lifecycle' # 💡 Allows: curl -X POST http://localhost:9090/-/reload
+      - '--web.enable-lifecycle' # Enables hot-reloading config via API
     ports:
       - "9090:9090"
     volumes:
@@ -51,18 +56,21 @@ services:
       - observability
     restart: unless-stopped
 
+  # ----------------------------------------------------------------------------
+  # STORAGE LAYER: Logs (Loki)
+  # ----------------------------------------------------------------------------
   loki:
-    image: grafana/loki:3.3.2  # Pinning to a stable 3.x version
+    image: grafana/loki:3.3.2 
     container_name: loki
     user: "0:0"
-    # Use array format for command to ensure flags are passed correctly
+    # -config.expand-env=true allows using ${VAR} inside loki-config.yaml
     command: ["-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true"]
     ports:
       - "3100:3100"
     volumes:
       - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
       - loki-data:/var/loki
-    env_file: .env
+    env_file: .env # Injects S3 Credentials from environment
     environment:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
@@ -71,12 +79,15 @@ services:
       - observability
     restart: unless-stopped
 
+  # ----------------------------------------------------------------------------
+  # STORAGE LAYER: Traces (Tempo)
+  # ----------------------------------------------------------------------------
   tempo:
     image: grafana/tempo:latest
     container_name: tempo
     command: ["-config.file=/etc/tempo.yaml", "-config.expand-env=true"]
     ports:
-      - "3200:3200" # Tempo API and Ready check
+      - "3200:3200" # Tempo API and Service Graph endpoint
     volumes:
       - ./config/tempo-config.yaml:/etc/tempo.yaml
       - ./tempo-data:/var/tempo
@@ -89,16 +100,16 @@ services:
       - observability
     restart: unless-stopped
 
-  # ==========================================================
-  # INFRASTRUCTURE LAYER (Hardware & Container Metrics)
-  # ==========================================================
+  # ----------------------------------------------------------------------------
+  # INFRASTRUCTURE LAYER: Hardware Metrics (Node Exporter & cAdvisor)
+  # ----------------------------------------------------------------------------
   node-exporter:
     image: prom/node-exporter:latest
     container_name: node-exporter
     command:
       - '--path.rootfs=/host'
     volumes:
-      - /:/host:ro,rslave
+      - /:/host:ro,rslave # Mount host root to monitor host machine disk/cpu
     networks:
       - observability
     restart: unless-stopped
@@ -106,7 +117,7 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.47.0
     container_name: cadvisor
-    privileged: true
+    privileged: true # Required to access container socket and resource stats
     security_opt:
       - label:disable
     ports:
@@ -117,17 +128,17 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
-      - /etc/machine-id:/etc/machine-id:ro          # 👈 Added for UUID fix
-      - /var/lib/dbus/machine-id:/var/lib/dbus/machine-id:ro # 👈 Added for UUID fix
+      - /etc/machine-id:/etc/machine-id:ro          # Fixed: Unique machine ID for metrics
+      - /var/lib/dbus/machine-id:/var/lib/dbus/machine-id:ro
     devices:
       - /dev/kmsg
     networks:
       - observability
     restart: unless-stopped
 
-  # ==========================================================
-  # VISUALIZATION LAYER
-  # ==========================================================
+  # ----------------------------------------------------------------------------
+  # VISUALIZATION LAYER: Grafana
+  # ----------------------------------------------------------------------------
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -135,9 +146,9 @@ services:
       - "3000:3000"
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./config:/etc/grafana/provisioning/datasources:ro
+      - ./config:/etc/grafana/provisioning/datasources:ro # Auto-link Loki/Tempo/Prom
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true # Optional: for easier local dev
+      - GF_AUTH_ANONYMOUS_ENABLED=true # Bypass login screen for local development
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
     networks:
       - observability
@@ -147,7 +158,10 @@ services:
       - tempo
     restart: unless-stopped
 
-# --- Persistent Storage Definitions ---
+# ==============================================================================
+# PERSISTENT VOLUMES
+# Ensures data is preserved even if containers are deleted/recreated.
+# ==============================================================================
 volumes:
   grafana-data:
   prometheus-data:
@@ -155,7 +169,10 @@ volumes:
   loki-data:
   otel-data:
 
-# --- Global Network Definition ---
+# ==============================================================================
+# NETWORK DEFINITION
+# Isolated bridge network for service-to-service communication.
+# ==============================================================================
 networks:
   observability:
     driver: bridge

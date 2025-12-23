@@ -1,6 +1,14 @@
+# ==============================================================================
+# SERVER CONFIGURATION
+# Defines the networking behavior for Tempo's API and internal communication.
+# ==============================================================================
 server:
   http_listen_port: 3200
 
+# ==============================================================================
+# DISTRIBUTOR CONFIGURATION
+# The entry point for traces. Configured to receive OTLP data via gRPC.
+# ==============================================================================
 distributor:
   receivers:
     otlp:
@@ -8,6 +16,10 @@ distributor:
         grpc:
           endpoint: 0.0.0.0:4317
 
+# ==============================================================================
+# INGESTER CONFIGURATION
+# Batches traces in memory and manages the Write-Ahead Log (WAL) before flushing.
+# ==============================================================================
 ingester:
   lifecycler:
     ring:
@@ -16,6 +28,10 @@ ingester:
         store: inmemory
     final_sleep: 0s
 
+# ==============================================================================
+# STORAGE CONFIGURATION
+# Defines the persistence layer. Configured for AWS S3 long-term storage.
+# ==============================================================================
 storage:
   trace:
     backend: s3
@@ -28,6 +44,10 @@ storage:
     wal:
       path: /var/tempo/wal
 
+# ==============================================================================
+# OVERRIDES & LIMITS
+# Global limits and per-tenant settings to control ingestion volume.
+# ==============================================================================
 overrides:
   defaults:
     ingestion:
