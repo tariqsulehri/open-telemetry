@@ -6,6 +6,10 @@ datasources:
   uid: prometheus
   url: http://prometheus:9090
   isDefault: true
+  jsonData:
+    httpMethod: POST
+    # This ensures Prometheus treats the collector timestamps correctly
+    timeInterval: "15s"
 
 - name: Loki
   type: loki
@@ -24,9 +28,12 @@ datasources:
 - name: Tempo
   type: tempo
   uid: tempo
+  access: proxy
   url: http://tempo:3200
   jsonData:
-    lokiSearch:
-      datasourceUid: loki
     serviceMap:
-      datasourceUid: prometheus
+      datasourceUid: 'prometheus' # Ensure this matches your Prometheus UID
+    nodeGraph:
+      enabled: true
+    lokiSearch:
+      datasourceUid: 'loki'
