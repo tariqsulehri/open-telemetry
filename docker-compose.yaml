@@ -17,6 +17,7 @@ services:
       - "4317:4317"   # OTLP gRPC receiver
       - "4318:4318"   # OTLP HTTP receiver
       - "8888:8888"   # Collector internal metrics
+      - "8889:8889"   # Prometheus Metrics
       - "13133:13133" # Health check extension
     volumes:
       - ./config/otel-config.yaml:/etc/otel-config.yaml:ro
