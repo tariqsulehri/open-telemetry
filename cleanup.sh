@@ -14,18 +14,3 @@ echo "💎 Deep cleaning Docker cache (Optional)..."
 docker image prune -f
 
 echo "✅ System is clean. Local space recovered."
-
-
-#Part # 2
-# echo "⚠️  WARNING: This will delete ALL logs, metrics, and traces."
-# read -p "Are you sure? (y/n) " -n 1 -r
-# echo
-# if [[ $REPLY =~ ^[Yy]$ ]]
-# then
-#     docker compose down -v --remove-orphans
-#     # Clean up local bind-mount folders if they exist
-#     rm -rf ./loki-data
-#     rm -rf ./prometheus-data
-#     docker volume prune -f
-#     echo "✅ Workspace cleaned."
-fi
