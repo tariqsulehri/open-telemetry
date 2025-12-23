@@ -13,11 +13,13 @@ datasources:
   url: http://loki:3100
   jsonData:
     derivedFields:
-    # Correlation: Links Log TraceID to Tempo Trace
-    - datasourceUid: tempo
-      matcherRegex: "trace_id=(\\w+)"
-      name: TraceID
-      url: "$${__value.raw}"
+    - name: TraceID
+      datasourceUid: tempo
+      # For structured metadata, we use the label name directly
+      matcherRegex: "(.*)"
+      sourceField: "traceID" # <--- THIS is the key for Loki 3.0
+      urlLabel: "View Trace in Tempo"
+      internalLink: true
 
 - name: Tempo
   type: tempo

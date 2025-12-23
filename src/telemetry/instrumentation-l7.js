@@ -43,7 +43,7 @@ const sdk = new NodeSDK({
   }),
   traceExporter,
   logExporter,
-  // ✅ FIXED: Using 'metricReaders' as an array to resolve deprecation
+  // FIXED: Using 'metricReaders' as an array to resolve deprecation
   metricReaders: [
     new PeriodicExportingMetricReader({
       exporter: metricExporter,

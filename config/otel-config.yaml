@@ -14,15 +14,33 @@ receivers:
         static_configs:
         - targets: [ 'node-exporter:9100' ]
 
+connectors:
+  servicegraph:
+    dimensions:
+    - deployment.environment
+    - service.versio
+
 processors:
   batch:
     timeout: 1s
     send_batch_size: 1024
+
+  # 1. This tells Loki which resource attributes to use as index labels
   resource:
     attributes:
     - action: insert
       key: loki.resource.labels
-      value: service.name
+      value: service.name, deployment.environment
+
+  # 2. This fixes the "detected_level: unknown" and prepares TraceIDs
+  transform:
+    log_statements:
+    - context: log
+      statements:
+      # Sets the 'level' label so Loki displays color-coded logs (info, error, etc.)
+      - set(attributes["level"], severity_text)
+      # Ensures the traceID is accessible as a top-level attribute for linking
+      - set(attributes["traceID"], trace_id.string)
 
 extensions:
   health_check:
@@ -77,5 +95,5 @@ service:
 
     logs:
       receivers: [ otlp ]
-      processors: [ batch, resource ]
+      processors: [ transform, resource, batch ]
       exporters: [ debug, loki ]
