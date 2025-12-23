@@ -16,9 +16,13 @@ receivers:
 
 connectors:
   servicegraph:
+    metrics_flush_interval: 15s
+    latency_histogram_buckets: [ 100ms, 250ms, 1s, 5s, 10s ]
+    store:
+      ttl: 5s # Wait 5 seconds for a matching span
+      max_items: 1000
     dimensions:
-    - deployment.environment
-    - service.versio
+    - service.name
 
 processors:
   batch:
@@ -87,14 +91,14 @@ service:
 
   pipelines:
     traces:
-      receivers: [ otlp ]
+      receivers: [ otlp ] # REMOVED servicegraph from here
       processors: [ batch ]
-      exporters: [ otlp/tempo ] # Matches the new Tempo exporter
+      exporters: [ otlp/tempo, servicegraph ] # Correct: Traces go INTO the graph
 
     metrics:
-      receivers: [ otlp, prometheus ]
+      receivers: [ otlp, prometheus, servicegraph ] # ADDED servicegraph HERE
       processors: [ batch ]
-      exporters: [ prometheus ]
+      exporters: [ prometheus ] # Correct: Metrics come OUT of the graph
 
     logs:
       receivers: [ otlp ]

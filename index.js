@@ -5,6 +5,7 @@ const otel = require('@opentelemetry/api');
 const { rollTheDice } = require('./dice.js');
 const app = express();
 const dotenv = require("dotenv");
+const axios = require("axios")
 const { info, error, warn } = require('./src/loggers/logger');
 
 dotenv.config();
@@ -12,8 +13,26 @@ dotenv.config();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// --- Standard Routes ---
+//---- External Call
+// This route acts as a 'Client' calling a 'Server'
+app.get('/trigger-service-graph', async (req, res) => {
+   info('Triggering internal call to create a graph edge...');
+    try {
+        // CALLING ITSELF (Port 3500)
+        const response = await axios.get(`http://localhost:3500/hello`); 
+        res.status(200).json({ 
+            message: "Check metrics in 15s - Both spans produced!", 
+            data: response.data 
+        });
+    } catch (err) {
+        error('Failed', { error: err.message });
+        res.status(500).send(err.message);
+    }
+});
 
+
+
+// --- Standard Routes ---
 app.get('/hello', (req, res) =>{
     info('Received request for /hello endpoint.', { endpoint: '/hello' }); 
     setTimeout(() => {
