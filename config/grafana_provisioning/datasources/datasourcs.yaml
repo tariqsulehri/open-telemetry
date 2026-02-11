@@ -19,8 +19,9 @@ datasources:
     derivedFields:
     - name: TraceID
       datasourceUid: tempo
+      matcherType: label
       # For structured metadata, we use the label name directly
-      matcherRegex: "(.*)"
+      matcherRegex: traceID
       sourceField: "traceID" # <--- THIS is the key for Loki 3.0
       urlLabel: "View Trace in Tempo"
       internalLink: true
@@ -31,9 +32,14 @@ datasources:
   access: proxy
   url: http://tempo:3200
   jsonData:
+    httpMethod: GET
     serviceMap:
       datasourceUid: 'prometheus' # Ensure this matches your Prometheus UID
     nodeGraph:
       enabled: true
+    search:
+      hide: false
     lokiSearch:
       datasourceUid: 'loki'
+    traceQuery:
+      lokiUid: 'loki'

@@ -17,12 +17,12 @@ services:
     image: otel/opentelemetry-collector-contrib:0.99.0
     container_name: otel-collector
     user: "0:0" # Elevate to root to manage persistent volume permissions
-    command: ["--config=/etc/otel-config.yaml"]
+    command: [ "--config=/etc/otel-config.yaml" ]
     ports:
-      - "4317:4317"   # OTLP gRPC: Primary for high-performance tracing
-      - "4318:4318"   # OTLP HTTP: Used by web apps or legacy clients
-      - "8888:8888"   # Internal: Collector's own health metrics
-      - "8889:8889"   # Prometheus Exporter: Where Prometheus scrapes app metrics
+      - "4317:4317" # OTLP gRPC: Primary for high-performance tracing
+      - "4318:4318" # OTLP HTTP: Used by web apps or legacy clients
+      - "8888:8888" # Internal: Collector's own health metrics
+      - "8889:8889" # Prometheus Exporter: Where Prometheus scrapes app metrics
       - "13133:13133" # Health Check: Used by Docker/K8s for liveness probes
     volumes:
       - ./config/otel-config.yaml:/etc/otel-config.yaml:ro
@@ -42,7 +42,7 @@ services:
     container_name: prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=30d' # Retain local metrics for 30 days
+      - '--storage.tsdb.retention.time=7d' # Retain local metrics for 30 days
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-lifecycle' # Enables hot-reloading config via API
@@ -60,11 +60,11 @@ services:
   # STORAGE LAYER: Logs (Loki)
   # ----------------------------------------------------------------------------
   loki:
-    image: grafana/loki:3.3.2 
+    image: grafana/loki:3.3.2
     container_name: loki
     user: "0:0"
     # -config.expand-env=true allows using ${VAR} inside loki-config.yaml
-    command: ["-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true"]
+    command: [ "-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true" ]
     ports:
       - "3100:3100"
     volumes:
@@ -85,9 +85,10 @@ services:
   tempo:
     image: grafana/tempo:latest
     container_name: tempo
-    command: ["-config.file=/etc/tempo.yaml", "-config.expand-env=true"]
+    command: [ "-config.file=/etc/tempo.yaml", "-config.expand-env=true" ]
     ports:
       - "3200:3200" # Tempo API and Service Graph endpoint
+      # - "7946:7946" # Internal Gossip/Ring Port
     volumes:
       - ./config/tempo-config.yaml:/etc/tempo.yaml
       - ./tempo-data:/var/tempo
@@ -128,7 +129,7 @@ services:
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
-      - /etc/machine-id:/etc/machine-id:ro          # Fixed: Unique machine ID for metrics
+      - /etc/machine-id:/etc/machine-id:ro # Fixed: Unique machine ID for metrics
       - /var/lib/dbus/machine-id:/var/lib/dbus/machine-id:ro
     devices:
       - /dev/kmsg
@@ -169,10 +170,10 @@ volumes:
   loki-data:
   otel-data:
 
-# ==============================================================================
-# NETWORK DEFINITION
-# Isolated bridge network for service-to-service communication.
-# ==============================================================================
+    # ==============================================================================
+    # NETWORK DEFINITION
+    # Isolated bridge network for service-to-service communication.
+    # ==============================================================================
 networks:
   observability:
     driver: bridge

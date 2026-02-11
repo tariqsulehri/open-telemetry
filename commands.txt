@@ -1,0 +1,7 @@
+docker-compose --env-file .env up -d
+docker compose down
+
+
+docker compose up -d tempo
+
+docker compose --env-file .env up -d --force-recreate tempo

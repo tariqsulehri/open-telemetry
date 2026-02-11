@@ -122,11 +122,13 @@ service:
     traces:
       receivers: [ otlp ]
       processors: [ batch ]
+      # exporters: [ otlp/tempo, servicegraph ]
       exporters: [ otlp/tempo, servicegraph ]
 
     # Metrics Pipeline: App/NodeExporter/ServiceGraph -> Prometheus
     metrics:
       receivers: [ otlp, prometheus, servicegraph ]
+      # receivers: [ otlp, prometheus ]
       processors: [ batch ]
       exporters: [ prometheus ]
 
