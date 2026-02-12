@@ -11,24 +11,28 @@ services:
 
   # ----------------------------------------------------------------------------
   # INGESTION LAYER: OpenTelemetry Collector
-  # Acts as the central gateway for all app traces, logs, and metrics.
+  # ----------------------------------------------------------------------------
+  # The OpenTelemetry Collector is the central nervous system of the observability stack.
+  # It receives telemetry data (traces, metrics, and logs) from applications,
+  # processes/transforms it, and exports it to the appropriate backends 
+  # (Loki for logs, Prometheus for metrics, Tempo for traces).
   # ----------------------------------------------------------------------------
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.99.0
     container_name: otel-collector
-    user: "0:0" # Elevate to root to manage persistent volume permissions
-    command: [ "--config=/etc/otel-config.yaml" ]
+    user: "0:0" # Running as root to ensure write permissions on the persistent volume
+    command: [ "--config=/etc/otel-config.yaml" ] # Load the collector configuration
     ports:
-      - "4317:4317" # OTLP gRPC: Primary for high-performance tracing
-      - "4318:4318" # OTLP HTTP: Used by web apps or legacy clients
-      - "8888:8888" # Internal: Collector's own health metrics
-      - "8889:8889" # Prometheus Exporter: Where Prometheus scrapes app metrics
-      - "13133:13133" # Health Check: Used by Docker/K8s for liveness probes
+      - "4317:4317" # OTLP gRPC: The primary, high-performance protocol for sending telemetry.
+      - "4318:4318" # OTLP HTTP: Alternative protocol, useful for web/browser clients or situations where gRPC isn't available.
+      - "8888:8888" # Internal telemetry: Exposes metrics *about* the collector itself (CPU, RAM, dropped spans).
+      - "8889:8889" # Prometheus Exporter: The port Prometheus scrapes to get application metrics processed by the collector.
+      - "13133:13133" # Health Check Extension: Used for readiness/liveness probes by orchestrators (Docker/K8s).
     volumes:
-      - ./config/otel-config.yaml:/etc/otel-config.yaml:ro
-      - otel-data:/var/lib/otelcol/persistence # Buffer for "Retry on Failure" data
+      - ./config/otel-config.yaml:/etc/otel-config.yaml:ro # Mount the declarative configuration file.
+      - otel-data:/var/lib/otelcol/persistence # Persistent buffer directory; prevents data loss if backends are temporarily down.
     networks:
-      - observability
+      - observability # Grants access to backend services (Loki, Tempo, Prometheus)
     depends_on:
       - loki
       - tempo
@@ -37,21 +41,25 @@ services:
   # ----------------------------------------------------------------------------
   # STORAGE LAYER: Metrics (Prometheus)
   # ----------------------------------------------------------------------------
+  # Prometheus is the time-series database for storing metric data.
+  # It scrapes metrics from the OpenTelemetry Collector (and other targets) 
+  # and provides a powerful Query Language (PromQL) for analysis.
+  # ----------------------------------------------------------------------------
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.retention.time=7d' # Retain local metrics for 30 days
+      - '--storage.tsdb.retention.time=7d' # Data retention policy: keep metrics for 7 days.
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--web.enable-lifecycle' # Enables hot-reloading config via API
+      - '--web.enable-lifecycle' # Allows reloading configuration without restarting the container (via HTTP POST to /-/reload).
     ports:
-      - "9090:9090"
+      - "9090:9090" # The main Prometheus UI and Query API port.
     volumes:
-      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
-      - ./config/prometheus_rules:/etc/prometheus/prometheus_rules:ro
-      - prometheus-data:/prometheus
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro # Main configuration defining scrape jobs.
+      - ./config/prometheus_rules:/etc/prometheus/prometheus_rules:ro # Rule files for recording and alerting.
+      - prometheus-data:/prometheus # Persistent volume ensures simple restarts don't wipe metric history.
     networks:
       - observability
     restart: unless-stopped
@@ -59,20 +67,25 @@ services:
   # ----------------------------------------------------------------------------
   # STORAGE LAYER: Logs (Loki)
   # ----------------------------------------------------------------------------
+  # Loki is a set of components that can be composed into a fully featured logging stack.
+  # Unlike other logging systems, Loki is built around the idea of only indexing metadata 
+  # about your logs (labels) rather than the log lines themselves.
+  # ----------------------------------------------------------------------------
   loki:
-    image: grafana/loki:3.3.2
+    image: grafana/loki:3.5.0
     container_name: loki
-    user: "0:0"
-    # -config.expand-env=true allows using ${VAR} inside loki-config.yaml
+    user: "0:0" # Required for Loki to write to the mounted volume for WAL and storage.
+    # The -config.expand-env=true flag is critical:
+    # It allows us to reference environment variables (like AWS keys) inside the YAML config file.
     command: [ "-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true" ]
     ports:
-      - "3100:3100"
+      - "3100:3100" # Loki's HTTP API for ingesting logs and querying them via LogQL.
     volumes:
-      - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
-      - loki-data:/var/loki
-    env_file: .env # Injects S3 Credentials from environment
+      - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro # Mount the Loki configuration.
+      - loki-data:/var/loki # Persistent storage for the Write-Ahead Log (WAL) and local index.
+    env_file: .env # Source of truth for secrets; keeps sensitive keys out of the specific docker-compose file.
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} # Propagate AWS credentials for S3 storage.
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
       - AWS_REGION=${AWS_REGION}
     networks:
@@ -82,16 +95,21 @@ services:
   # ----------------------------------------------------------------------------
   # STORAGE LAYER: Traces (Tempo)
   # ----------------------------------------------------------------------------
+  # Grafana Tempo is a high-volume, minimal dependency distributed tracing backend.
+  # It is designed to be cost-effective by only indexing the trace ID and nothing else.
+  # ----------------------------------------------------------------------------
   tempo:
     image: grafana/tempo:2.10.0
     container_name: tempo
+    # Enables environment variable expansion within tempo-config.yaml, needed for S3 credentials.
     command: [ "-config.file=/etc/tempo.yaml", "-config.expand-env=true" ]
     ports:
-      - "3200:3200" # Tempo API and Service Graph endpoint
-      # - "7946:7946" # Internal Gossip/Ring Port
+      - "3200:3200" # The central port for Tempo (HTTP for querying, ingestion, health checks).
+      # - "4317:4317" # OTLP gRPC ingestion: Disabled here because we route everything through the Collector.
+      # - "7946:7946" # Gossip Ring: Used for cluster communication (not needed in this single-node setup).
     volumes:
-      - ./config/tempo-config.yaml:/etc/tempo.yaml
-      - ./tempo-data:/var/tempo
+      - ./config/tempo-config.yaml:/etc/tempo.yaml # Mount the Tempo configuration.
+      - tempo-data:/var/tempo # Persistent storage for WAL to ensure data durability before flushing to S3.
     env_file: .env
     environment:
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
@@ -108,9 +126,9 @@ services:
     image: prom/node-exporter:latest
     container_name: node-exporter
     command:
-      - '--path.rootfs=/host'
+      - '--path.rootfs=/host' # Monitor the host's filesystem by mounting it
     volumes:
-      - /:/host:ro,rslave # Mount host root to monitor host machine disk/cpu
+      - /:/host:ro,rslave # Mount host root to allow access to system metrics
     networks:
       - observability
     restart: unless-stopped
@@ -120,19 +138,19 @@ services:
     container_name: cadvisor
     privileged: true # Required to access container socket and resource stats
     security_opt:
-      - label:disable
+      - label:disable # Disable SELinux labeling to allow access to system files
     ports:
-      - "8080:8080"
+      - "8080:8080" # cAdvisor web UI and metrics endpoint
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
-      - /etc/machine-id:/etc/machine-id:ro # Fixed: Unique machine ID for metrics
-      - /var/lib/dbus/machine-id:/var/lib/dbus/machine-id:ro
+      - /:/rootfs:ro # Read-only access to root filesystem
+      - /var/run:/var/run:ro # Docker socket for container stats
+      - /sys:/sys:ro # System information
+      - /var/lib/docker/:/var/lib/docker:ro # Docker state information
+      - /dev/disk/:/dev/disk:ro # Disk usage stats
+      - /etc/machine-id:/etc/machine-id:ro # Unique machine ID for metrics
+      - /var/lib/dbus/machine-id:/var/lib/dbus/machine-id:ro # DBus machine ID
     devices:
-      - /dev/kmsg
+      - /dev/kmsg # Kernel message log access
     networks:
       - observability
     restart: unless-stopped
@@ -140,17 +158,21 @@ services:
   # ----------------------------------------------------------------------------
   # VISUALIZATION LAYER: Grafana
   # ----------------------------------------------------------------------------
+  # Grafana is the visualization and analytics platform.
+  # It connects to all our data sources (Loki, Prometheus, Tempo) 
+  # and allows us to build dashboards and explore data.
+  # ----------------------------------------------------------------------------
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
     ports:
-      - "3000:3000"
+      - "3000:3000" # The main web interface functionality.
     volumes:
-      - grafana-data:/var/lib/grafana
-      - ./config:/etc/grafana/provisioning/datasources:ro # Auto-link Loki/Tempo/Prom
+      - grafana-data:/var/lib/grafana # Stores user data, dashboards that are manually created, and plugins.
+      - ./config:/etc/grafana/provisioning/datasources:ro # Declaratively provisions data sources on startup.
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true # Bypass login screen for local development
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true # Convenience for development: disables the login screen.
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin # Grants full admin rights to unauthenticated users (DEV ONLY).
     networks:
       - observability
     depends_on:
@@ -164,11 +186,12 @@ services:
 # Ensures data is preserved even if containers are deleted/recreated.
 # ==============================================================================
 volumes:
-  grafana-data:
-  prometheus-data:
-  tempo-data:
-  loki-data:
+  grafana-data: # Stores Grafana dashboards, users, and settings
+  prometheus-data: # Stores Prometheus time-series data
+  tempo-data: # Stores Tempo WAL and temporary traces
+  loki-data: # Stores Loki WAL and indexes
   otel-data:
+    # Stores OpenTelemetry Collector buffer for retries
 
     # ==============================================================================
     # NETWORK DEFINITION

@@ -4,14 +4,16 @@
 # ==============================================================================
 receivers:
   # OTLP: The standard OpenTelemetry protocol for app-generated telemetry
+  # This is the primary ingestion method for traces, metrics, and logs from your apps.
   otlp:
     protocols:
       grpc:
-        endpoint: 0.0.0.0:4317
+        endpoint: 0.0.0.0:4317 # Default gRPC port (performance)
       http:
-        endpoint: 0.0.0.0:4318
+        endpoint: 0.0.0.0:4318 # Default HTTP port (web/browser clients)
 
   # Prometheus: Scrapes infrastructure metrics from Node Exporter
+  # Acts as a proxy, scraping Prometheus targets and converting them to OTLP format internally.
   prometheus:
     config:
       scrape_configs:
@@ -26,6 +28,7 @@ receivers:
 # ==============================================================================
 connectors:
   # ServiceGraph: Generates service-to-service dependency maps from span data
+  # It analyzes trace edges to build a directed graph of service interactions (RED metrics).
   servicegraph:
     metrics_flush_interval: 15s
     latency_histogram_buckets: [ 100ms, 250ms, 1s, 5s, 10s ]
@@ -41,11 +44,13 @@ connectors:
 # ==============================================================================
 processors:
   # Performance: Buffers data to reduce network requests
+  # Essential for production to prevent overwhelming the exporters.
   batch:
     timeout: 1s
     send_batch_size: 1024
 
   # Labeling: Injects metadata into log entries for Loki indexing
+  # Ensures that logs have the necessary labels for efficient querying in Loki.
   resource:
     attributes:
     - action: insert
@@ -58,7 +63,7 @@ processors:
     - context: log
       statements:
       - set(attributes["level"], severity_text) # Fixes "unknown level" in Grafana
-      - set(attributes["traceID"], trace_id.string) # Enables Log-to-Trace jumps
+      - set(attributes["traceID"], trace_id.string) # Enables Log-to-Trace jumps (correlation)
 
 # ==============================================================================
 # EXTENSIONS
@@ -70,6 +75,7 @@ extensions:
     endpoint: 0.0.0.0:13133
 
   # File Storage: Buffer plane to prevent data loss during backend outages
+  # If an exporter fails, data is queued here instead of being dropped.
   file_storage:
     directory: /var/lib/otelcol/persistence
     timeout: 10s
@@ -80,6 +86,7 @@ extensions:
 # ==============================================================================
 exporters:
   # Debug: Prints detailed telemetry to stdout for troubleshooting
+  # Useful for verifying that data is actually reaching the collector.
   debug:
     verbosity: detailed
 
@@ -90,9 +97,10 @@ exporters:
       insecure: true
     sending_queue:
       enabled: true
-      storage: file_storage
+      storage: file_storage # Use persistent storage for the queue
 
   # Prometheus: Exposes metrics for the Prometheus scraper
+  # The Collector acts as a server here, allowing Prometheus to scrape it.
   prometheus:
     endpoint: "0.0.0.0:8889"
     send_timestamps: true
@@ -104,7 +112,7 @@ exporters:
     endpoint: "http://loki:3100/loki/api/v1/push"
     sending_queue:
       enabled: true
-      storage: file_storage
+      storage: file_storage # Use persistent storage for the queue
 
 # ==============================================================================
 # SERVICE (PIPELINES)
@@ -114,7 +122,7 @@ service:
   extensions: [ health_check, file_storage ]
   telemetry:
     metrics:
-      level: detailed
+      level: detailed # Expose internal collector metrics
       address: 0.0.0.0:8888
 
   pipelines:

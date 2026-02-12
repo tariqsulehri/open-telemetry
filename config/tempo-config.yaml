@@ -1,37 +1,56 @@
-target: all
+# ==============================================================================
+# Tempo Configuration
+# ==============================================================================
+# This configuration file defines the settings for Grafana Tempo, a distributed
+# tracing backend. It configures the server, distributor, ingester, and storage
+# mechanisms required for handling trace data.
 
+# ------------------------------------------------------------------------------
+# Server Configuration
+# ------------------------------------------------------------------------------
+# Configures the HTTP server for Tempo.
 server:
-  http_listen_port: 3200
+  http_listen_port: 3200 # Port where Tempo listens for HTTP traffic (e.g., metrics, health checks)
 
+# ------------------------------------------------------------------------------
+# Distributor Configuration
+# ------------------------------------------------------------------------------
+# The distributor is responsible for receiving spans from clients and distributing
+# them to ingesters.
 distributor:
   receivers:
     otlp:
       protocols:
         http:
-          endpoint: 0.0.0.0:4318
+          endpoint: 0.0.0.0:4318 # Endpoint for OTLP HTTP receiver
         grpc:
-          endpoint: 0.0.0.0:4317
+          endpoint: 0.0.0.0:4317 # Endpoint for OTLP gRPC receiver
 
+# ------------------------------------------------------------------------------
+# Ingester Configuration
+# ------------------------------------------------------------------------------
+# Ingesters receive traces from distributors, batch them, and ultimately push
+# them to long-term storage.
 ingester:
   lifecycler:
     ring:
       kvstore:
-        store: inmemory
-      replication_factor: 1
+        store: inmemory # Uses in-memory Key-Value store for ring management (suitable for single-instance or testing)
+      replication_factor: 1 # Number of replicas for each trace (1 is sufficient for local/dev environments)
 
-# compactor:
-#   compaction:
-#     block_retention: 24h
-
+# ------------------------------------------------------------------------------
+# Storage Configuration
+# ------------------------------------------------------------------------------
+# Configures where and how traces are stored.
 storage:
   trace:
-    backend: s3
+    backend: s3 # Use AWS S3 (or compatible storage) as the backend
     wal:
-      path: /var/tempo/wal
+      path: /var/tempo/wal # Directory for Write-Ahead Log (WAL) to ensure data durability before flushing
     s3:
-      bucket: org-observability-tempo-traces
-      endpoint: s3.us-east-1.amazonaws.com
-      region: us-east-1
-      access_key: ${AWS_ACCESS_KEY_ID}
-      secret_key: ${AWS_SECRET_ACCESS_KEY}
-      insecure: false
+      bucket: org-observability-tempo-traces # S3 bucket name
+      endpoint: s3.us-east-1.amazonaws.com # S3 endpoint URL
+      region: us-east-1 # AWS Region
+      access_key: ${AWS_ACCESS_KEY_ID} # AWS Access Key ID (from environment variable)
+      secret_key: ${AWS_SECRET_ACCESS_KEY} # AWS Secret Access Key (from environment variable)
+      insecure: false # Set to true if using non-SSL endpoint (e.g., MinIO locally), false for AWS S3

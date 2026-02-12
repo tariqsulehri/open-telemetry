@@ -11,3 +11,8 @@ docker compose --env-file .env up -d --force-recreate tempo
 tempo logs were not showing:
 mkdir -p ./tempo-data/wal
 chmod -R 777 ./tempo-data
+
+
+remove all volumes:
+docker compose down -v
+docker-compose --env-file .env up -d
