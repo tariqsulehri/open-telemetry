@@ -1,4 +1,5 @@
 require('./src/telemetry/instrumentation');
+require('./src/telemetry/pyroscore');
 
 const express = require('express');
 const otel = require('@opentelemetry/api');
@@ -15,6 +16,38 @@ app.use(express.urlencoded({ extended: true }));
 
 // Initialize Routes
 // require('./src/startup/routes')(app);
+
+app.get('/debug/cpu-stress', (req, res) => {
+    const start = Date.now();
+    // Artificial heavy CPU load: complex calculation for 2 seconds
+    while (Date.now() - start < 2000) {
+        Math.random() * Math.random();
+    }
+    res.send('CPU stress test complete');
+});
+
+
+// A "Fast" function: Just some light math
+function processUserMetadata() {
+    let result = 0;
+    for (let i = 0; i < 1000; i++) { result += Math.sqrt(i); }
+    return result;
+}
+
+// A "Slow" function: Inefficiently processes a large loop
+function generateComplexReport() {
+    let data = [];
+    for (let i = 0; i < 10000000; i++) {
+        data.push(Math.random() * Math.random());
+    }
+    return data.length;
+}
+
+app.get('/test-profile', (req, res) => {
+    processUserMetadata(); // Takes ~1% of CPU
+    generateComplexReport(); // Takes ~99% of CPU
+    res.send('Profile data generated!');
+});
 
 //---- External Call
 // This route acts as a 'Client' calling a 'Server'
