@@ -4,11 +4,12 @@
 # ==============================================================================
 
 global:
-  scrape_interval: 15s # How often to fetch metrics from targets
+  scrape_interval: 15s # How often to fetch metrics from targets (15s is standard for production)
   evaluation_interval: 15s # How often to evaluate alerting rules
   scrape_timeout: 10s # Timeout for a single scrape request
 
   # External labels allow for easier identification in multi-cluster environments
+  # These are applied to every metric exported by this Prometheus instance.
   external_labels:
     cluster: production
     environment: prod
@@ -34,15 +35,18 @@ scrape_configs:
   - targets: [ 'prometheus:9090' ]
 
 # --- VISUALIZATION LAYER ---
+# Monitor Grafana for usage statistics and performance
 - job_name: 'grafana'
   static_configs:
   - targets: [ 'grafana:3000' ]
 
 # --- STORAGE & LOGGING ---
+# Monitor Loki for ingestion rates, query performance, and errors
 - job_name: 'loki'
   static_configs:
   - targets: [ 'loki:3100' ]
 
+# Monitor Tempo for trace ingestion rates and distributor health
 - job_name: 'tempo'
   static_configs:
   - targets: [ 'tempo:3200' ]
@@ -53,7 +57,7 @@ scrape_configs:
   relabel_configs:
   - source_labels: [ __address__ ]
     target_label: instance
-    replacement: 'physical-host'
+    replacement: 'physical-host' # Relabel to a friendly name
   static_configs:
   - targets: [ 'node-exporter:9100' ]
 
@@ -62,7 +66,7 @@ scrape_configs:
   relabel_configs:
   - source_labels: [ __address__ ]
     target_label: instance
-    replacement: 'docker-engine'
+    replacement: 'docker-engine' # Relabel to a friendly name
   static_configs:
   - targets: [ 'cadvisor:8080' ]
 
@@ -71,12 +75,13 @@ scrape_configs:
 - job_name: 'otel-collector-telemetry'
   metric_relabel_configs:
   - source_labels: [ __name__ ]
-    regex: 'otelcol_processor_batch_.*'
+    regex: 'otelcol_processor_batch_.*' # Only keep batch processor metrics to reduce noise
     action: keep
   static_configs:
   - targets: [ 'otel-collector:8888' ]
 
 # Application-level metrics exported via OTLP from Node.js
+# The Collector exposes these on port 8889 for Prometheus to scrape
 - job_name: 'otel-collector-app-metrics'
   static_configs:
   - targets: [ 'otel-collector:8889' ]

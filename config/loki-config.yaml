@@ -1,62 +1,93 @@
-auth_enabled: false
+# ==============================================================================
+# GLOBAL CONFIGURATION
+# ==============================================================================
+auth_enabled: false # Disables multi-tenancy (no X-Scope-OrgID header required) for simpler setup.
 
+# ==============================================================================
+# SERVER CONFIGURATION
+# Defines the networking and logging behavior of the Loki process.
+# ==============================================================================
 server:
-  http_listen_port: 3100
-  grpc_listen_port: 9096
-  log_level: info
+  http_listen_port: 3100 # Port for HTTP API (Ingestion, Querying, Readiness)
+  grpc_listen_port: 9096 # Port for internal gRPC communication (Ring, Gossip)
+  log_level: info        # Logistics logging level (debug, info, warn, error)
 
+# ==============================================================================
+# COMMON SETTINGS
+# Shared configurations used by multiple Loki components (Ingester, Querier, etc.)
+# ==============================================================================
 common:
-  # instance_addr: 0.0.0.0 # Change from 127.0.0.1 to 0.0.0.0
-  path_prefix: /var/loki
-  replication_factor: 1
+  # instance_addr: 0.0.0.0
+  path_prefix: /var/loki      # Base directory for Loki data
+  replication_factor: 1       # How many times to replicate data (1 for single-node)
   ring:
     kvstore:
-      store: inmemory
+      store: inmemory         # Use in-memory KV store for ring management (dev/test)
   storage:
     s3:
-      bucketnames: org-observability-loki-logs
-      endpoint: s3.us-east-1.amazonaws.com
-      region: us-east-1
-      # access_key_id: ${AWS_ACCESS_KEY_ID}
+      bucketnames: org-observability-loki-logs # S3 Bucket forChunks & Admin
+      endpoint: s3.us-east-1.amazonaws.com     # S3 Endpoint
+      region: us-east-1                        # AWS Region
+      # access_key_id: ${AWS_ACCESS_KEY_ID}    # Access Key (commented out, using env vars or IAM roles)
       # secret_access_key: ${AWS_SECRET_ACCESS_KEY}
-      s3forcepathstyle: false
+      s3forcepathstyle: false # Set to true for MinIO or other S3-compatible stores that need path-style access
 
+# ==============================================================================
+# INGESTER CONFIGURATION
+# Manages the lifecycle of incoming log streams in memory before flushing to S3.
+# ==============================================================================
 ingester:
   lifecycler:
     ring:
       kvstore:
         store: inmemory
       replication_factor: 1
-    final_sleep: 0s
-  chunk_idle_period: 1m
-  chunk_block_size: 262144
-  chunk_encoding: snappy
-  chunk_retain_period: 30s
-  max_chunk_age: 2m
+    final_sleep: 0s       # Wait time before shutting down (0s for faster restarts in dev)
+  chunk_idle_period: 1m   # Close chunks if no new logs arrive for 1m
+  chunk_block_size: 262144 # Target size for chunks (256KB)
+  chunk_encoding: snappy  # Compression algorithm for chunks
+  chunk_retain_period: 30s # How long to keep chunks in memory after flushing
+  max_chunk_age: 2m       # Force flush chunk after 2m even if not full
   wal:
-    dir: /var/loki/wal
+    dir: /var/loki/wal    # Directory for Write-Ahead Log to prevent data loss on crash
 
+# ==============================================================================
+# SCHEMA CONFIGURATION
+# Defines the internal data structure and storage engine for logs and indexes.
+# ==============================================================================
 schema_config:
   configs:
   - from: "2024-01-01"
-    store: tsdb
-    object_store: s3
-    schema: v13
+    store: tsdb          # Use TSDB (Time Series DB) for index storage (newer, faster than boltdb-shipper)
+    object_store: s3     # Store chunks and index in S3
+    schema: v13          # Schema version
     index:
-      prefix: index_
-      period: 24h
+      prefix: index_     # Prefix for index files in S3
+      period: 24h        # Create a new index file every 24h
 
+# ==============================================================================
+# STORAGE CONFIGURATION
+# Manages how the TSDB index files are shipped and cached locally.
+# ==============================================================================
 storage_config:
   tsdb_shipper:
-    active_index_directory: /var/loki/index
-    cache_location: /var/loki/cache
+    active_index_directory: /var/loki/index # Location of active index files
+    cache_location: /var/loki/cache         # Cache for index files
 
+# ==============================================================================
+# LIMITS & RETENTION POLICY
+# Sets operational boundaries and how long data remains in the system.
+# ==============================================================================
 limits_config:
-  retention_period: 336h # 14 Days
-  allow_structured_metadata: true
+  retention_period: 336h # 14 Days (retention enforcement requires compactor)
+  allow_structured_metadata: true # Enable support for structured metadata in logs
 
+# ==============================================================================
+# COMPACTOR CONFIGURATION
+# Handles deduplication and applies the retention policy to S3 storage.
+# ==============================================================================
 compactor:
   working_directory: /var/loki/compactor
-  compaction_interval: 10m
-  retention_enabled: true
-  delete_request_store: s3
+  compaction_interval: 10m    # How often to run compaction
+  retention_enabled: true     # Must be true for retention_period to work
+  delete_request_store: s3    # Store delete requests in S3

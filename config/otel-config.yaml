@@ -1,11 +1,19 @@
+# ==============================================================================
+# RECEIVERS
+# Defines how telemetry data enters the Collector.
+# ==============================================================================
 receivers:
+  # OTLP: The standard OpenTelemetry protocol for app-generated telemetry
+  # This is the primary ingestion method for traces, metrics, and logs from your apps.
   otlp:
     protocols:
       grpc:
-        endpoint: 0.0.0.0:4317
+        endpoint: 0.0.0.0:4317 # Default gRPC port (performance)
       http:
-        endpoint: 0.0.0.0:4318
+        endpoint: 0.0.0.0:4318 # Default HTTP port (web/browser clients)
 
+  # Prometheus: Scrapes infrastructure metrics from Node Exporter
+  # Acts as a proxy, scraping Prometheus targets and converting them to OTLP format internally.
   prometheus:
     config:
       scrape_configs:
@@ -14,92 +22,125 @@ receivers:
         static_configs:
         - targets: [ 'node-exporter:9100' ]
 
+# ==============================================================================
+# CONNECTORS
+# Bridges data between pipelines (e.g., converting Traces into Metrics).
+# ==============================================================================
 connectors:
+  # ServiceGraph: Generates service-to-service dependency maps from span data
+  # It analyzes trace edges to build a directed graph of service interactions (RED metrics).
   servicegraph:
     metrics_flush_interval: 15s
     latency_histogram_buckets: [ 100ms, 250ms, 1s, 5s, 10s ]
     store:
-      ttl: 5s # Wait 5 seconds for a matching span
+      ttl: 5s # Grace period to wait for matching client/server spans
       max_items: 1000
     dimensions:
     - service.name
 
+# ==============================================================================
+# PROCESSORS
+# Logic to transform, batch, and enrich data before exporting.
+# ==============================================================================
 processors:
+  # Performance: Buffers data to reduce network requests
+  # Essential for production to prevent overwhelming the exporters.
   batch:
     timeout: 1s
     send_batch_size: 1024
 
-  # 1. This tells Loki which resource attributes to use as index labels
+  # Labeling: Injects metadata into log entries for Loki indexing
+  # Ensures that logs have the necessary labels for efficient querying in Loki.
   resource:
     attributes:
     - action: insert
       key: loki.resource.labels
       value: service.name, deployment.environment
 
-  # 2. This fixes the "detected_level: unknown" and prepares TraceIDs
+  # Transformation: Normalizes log levels and links TraceIDs for correlation
   transform:
     log_statements:
     - context: log
       statements:
-      # Sets the 'level' label so Loki displays color-coded logs (info, error, etc.)
-      - set(attributes["level"], severity_text)
-      # Ensures the traceID is accessible as a top-level attribute for linking
-      - set(attributes["traceID"], trace_id.string)
+      - set(attributes["level"], severity_text) # Fixes "unknown level" in Grafana
+      - set(attributes["traceID"], trace_id.string) # Enables Log-to-Trace jumps (correlation)
 
+# ==============================================================================
+# EXTENSIONS
+# Supporting features like health monitoring and persistent storage.
+# ==============================================================================
 extensions:
+  # Health Check: Endpoint for container orchestration readiness probes
   health_check:
     endpoint: 0.0.0.0:13133
-  # ARCHITECT TIP: File storage is critical for "Persistence Plane"
-  # It prevents data loss if Tempo or Loki restarts.
+
+  # File Storage: Buffer plane to prevent data loss during backend outages
+  # If an exporter fails, data is queued here instead of being dropped.
   file_storage:
     directory: /var/lib/otelcol/persistence
     timeout: 10s
 
+# ==============================================================================
+# EXPORTERS
+# Defines the destinations where processed telemetry is sent.
+# ==============================================================================
 exporters:
+  # Debug: Prints detailed telemetry to stdout for troubleshooting
+  # Useful for verifying that data is actually reaching the collector.
   debug:
     verbosity: detailed
 
-  # UPDATED: Replaced Jaeger with Tempo
+  # Tempo: Backend for distributed tracing (S3 persistent)
   otlp/tempo:
     endpoint: "tempo:4317"
     tls:
       insecure: true
     sending_queue:
       enabled: true
-      storage: file_storage # Links to the extension above
+      storage: file_storage # Use persistent storage for the queue
 
+  # Prometheus: Exposes metrics for the Prometheus scraper
+  # The Collector acts as a server here, allowing Prometheus to scrape it.
   prometheus:
     endpoint: "0.0.0.0:8889"
     send_timestamps: true
     resource_to_telemetry_conversion:
       enabled: true
 
+  # Loki: Backend for structured log aggregation (S3 persistent)
   loki:
     endpoint: "http://loki:3100/loki/api/v1/push"
-
     sending_queue:
       enabled: true
-      storage: file_storage
+      storage: file_storage # Use persistent storage for the queue
 
+# ==============================================================================
+# SERVICE (PIPELINES)
+# Orchestrates how the components above are wired together.
+# ==============================================================================
 service:
-  # UPDATED: Reactivated file_storage
   extensions: [ health_check, file_storage ]
   telemetry:
     metrics:
-      level: detailed
+      level: detailed # Expose internal collector metrics
       address: 0.0.0.0:8888
 
   pipelines:
+    # Trace Pipeline: App -> Collector -> (Tempo + Graph Generator)
     traces:
-      receivers: [ otlp ] # REMOVED servicegraph from here
+      receivers: [ otlp ]
       processors: [ batch ]
-      exporters: [ otlp/tempo, servicegraph ] # Correct: Traces go INTO the graph
+      # exporters: [ otlp/tempo, servicegraph ]
+      exporters: [ otlp/tempo, servicegraph ]
 
+    # Metrics Pipeline: App/NodeExporter/ServiceGraph -> Prometheus
     metrics:
-      receivers: [ otlp, prometheus, servicegraph ] # ADDED servicegraph HERE
+      receivers: [ otlp, prometheus, servicegraph ]
+      # receivers: [ otlp, prometheus ]
       processors: [ batch ]
-      exporters: [ prometheus ] # Correct: Metrics come OUT of the graph
+      exporters: [ prometheus ]
 
+    # Log Pipeline: App -> Enrichment -> (Loki + Debug)
     logs:
       receivers: [ otlp ]
       processors: [ transform, resource, batch ]

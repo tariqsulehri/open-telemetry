@@ -1,7 +1,7 @@
 'use strict';
 
 const { NodeSDK } = require('@opentelemetry/sdk-node');
-const os = require('os'); 
+const os = require('os');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 
 // HTTP Exporters
@@ -47,13 +47,13 @@ const sdk = new NodeSDK({
   metricReaders: [
     new PeriodicExportingMetricReader({
       exporter: metricExporter,
-      exportIntervalMillis: 10000, 
+      exportIntervalMillis: 10000,
     })
   ],
   instrumentations: [
-    getNodeAutoInstrumentations(), 
+    getNodeAutoInstrumentations(),
     new WinstonInstrumentation({
-      logFieldPlaceholder: 'otel', 
+      logFieldPlaceholder: 'otel',
       enabled: true,
     })
   ],
