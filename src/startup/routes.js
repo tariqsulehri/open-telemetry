@@ -24,5 +24,5 @@ module.exports = function (app) {
   //----------------------------------
   app.use("/api/user", users);
   //----------------------------------
-  app.use("/api/products",products)
+  app.use("/api/products", products)
 };

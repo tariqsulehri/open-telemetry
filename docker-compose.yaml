@@ -1,112 +1,203 @@
 version: '3.8'
 
-services:
-  # -----------------------------------------------------------
-  # 1. JAEGER (Traces)
-  # -----------------------------------------------------------
-  jaeger:
-    image: jaegertracing/all-in-one:latest
-    ports:
-      - "16686:16686" # UI
-      - "14250:14250" # Internal communication
-    networks:
-      - obs-net
+# ==============================================================================
+# OBSERVABILITY STACK: DOCKER COMPOSE
+# ==============================================================================
+# Purpose: Orchestrates the Full LGP (Loki, Grafana, Prometheus/Tempo) Stack.
+# Note: Requires a .env file for AWS S3 authentication.
+# ==============================================================================
 
-  # -----------------------------------------------------------
-  # 2. PROMETHEUS (Metrics)
-  # -----------------------------------------------------------
+services:
+
+  # ----------------------------------------------------------------------------
+  # INGESTION LAYER: OpenTelemetry Collector
+  # ----------------------------------------------------------------------------
+  # The OpenTelemetry Collector is the central nervous system of the observability stack.
+  # It receives telemetry data (traces, metrics, and logs) from applications,
+  # processes/transforms it, and exports it to the appropriate backends 
+  # (Loki for logs, Prometheus for metrics, Tempo for traces).
+  # ----------------------------------------------------------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    container_name: otel-collector
+    user: "0:0" # Running as root to ensure write permissions on the persistent volume
+    command: [ "--config=/etc/otel-config.yaml" ] # Load the collector configuration
+    ports:
+      - "4317:4317" # OTLP gRPC: The primary, high-performance protocol for sending telemetry.
+      - "4318:4318" # OTLP HTTP: Alternative protocol, useful for web/browser clients or situations where gRPC isn't available.
+      - "8888:8888" # Internal telemetry: Exposes metrics *about* the collector itself (CPU, RAM, dropped spans).
+      - "8889:8889" # Prometheus Exporter: The port Prometheus scrapes to get application metrics processed by the collector.
+      - "13133:13133" # Health Check Extension: Used for readiness/liveness probes by orchestrators (Docker/K8s).
+    volumes:
+      - ./config/otel-config.yaml:/etc/otel-config.yaml:ro # Mount the declarative configuration file.
+      - otel-data:/var/lib/otelcol/persistence # Persistent buffer directory; prevents data loss if backends are temporarily down.
+    networks:
+      - observability # Grants access to backend services (Loki, Tempo, Prometheus)
+    depends_on:
+      - loki
+      - tempo
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------------------
+  # STORAGE LAYER: Metrics (Prometheus)
+  # ----------------------------------------------------------------------------
+  # Prometheus is the time-series database for storing metric data.
+  # It scrapes metrics from the OpenTelemetry Collector (and other targets) 
+  # and provides a powerful Query Language (PromQL) for analysis.
+  # ----------------------------------------------------------------------------
   prometheus:
     image: prom/prometheus:latest
-    command: 
-      # Fixed: Use double dashes
-      - "--config.file=/etc/prometheus/prometheus.yaml"
-      - "--enable-feature=remote-write-receiver"
-    volumes:
-      # Ensure your local file is named .yaml
-      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yaml
-    ports:
-      - "9090:9090"
-    networks:
-      - obs-net
-
-  # -----------------------------------------------------------
-  # 3. LOKI (Logs)
-  # -----------------------------------------------------------
-  loki:
-    image: grafana/loki:2.9.2
+    container_name: prometheus
     command:
-      # Fixed: Use double dashes
-      - "-config.file=/etc/loki/local-config.yaml"
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d' # Data retention policy: keep metrics for 7 days.
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle' # Allows reloading configuration without restarting the container (via HTTP POST to /-/reload).
     ports:
-      - "3100:3100"
+      - "9090:9090" # The main Prometheus UI and Query API port.
     volumes:
-      # REMOVED the missing config file to prevent crash
-      # We only keep the data volume
-      - loki-data:/loki
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro # Main configuration defining scrape jobs.
+      - ./config/prometheus_rules:/etc/prometheus/prometheus_rules:ro # Rule files for recording and alerting.
+      - prometheus-data:/prometheus # Persistent volume ensures simple restarts don't wipe metric history.
     networks:
-      - obs-net
+      - observability
+    restart: unless-stopped
 
-  # -----------------------------------------------------------
-  # 4. GRAFANA (Visualization)
-  # -----------------------------------------------------------
+  # ----------------------------------------------------------------------------
+  # STORAGE LAYER: Logs (Loki)
+  # ----------------------------------------------------------------------------
+  # Loki is a set of components that can be composed into a fully featured logging stack.
+  # Unlike other logging systems, Loki is built around the idea of only indexing metadata 
+  # about your logs (labels) rather than the log lines themselves.
+  # ----------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.5.0
+    container_name: loki
+    user: "0:0" # Required for Loki to write to the mounted volume for WAL and storage.
+    # The -config.expand-env=true flag is critical:
+    # It allows us to reference environment variables (like AWS keys) inside the YAML config file.
+    command: [ "-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true" ]
+    ports:
+      - "3100:3100" # Loki's HTTP API for ingesting logs and querying them via LogQL.
+    volumes:
+      - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro # Mount the Loki configuration.
+      - loki-data:/var/loki # Persistent storage for the Write-Ahead Log (WAL) and local index.
+    env_file: .env # Source of truth for secrets; keeps sensitive keys out of the specific docker-compose file.
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} # Propagate AWS credentials for S3 storage.
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------------------
+  # STORAGE LAYER: Traces (Tempo)
+  # ----------------------------------------------------------------------------
+  # Grafana Tempo is a high-volume, minimal dependency distributed tracing backend.
+  # It is designed to be cost-effective by only indexing the trace ID and nothing else.
+  # ----------------------------------------------------------------------------
+  tempo:
+    image: grafana/tempo:2.10.0
+    container_name: tempo
+    # Enables environment variable expansion within tempo-config.yaml, needed for S3 credentials.
+    command: [ "-config.file=/etc/tempo.yaml", "-config.expand-env=true" ]
+    ports:
+      - "3200:3200" # The central port for Tempo (HTTP for querying, ingestion, health checks).
+      # - "4317:4317" # OTLP gRPC ingestion: Disabled here because we route everything through the Collector.
+      # - "7946:7946" # Gossip Ring: Used for cluster communication (not needed in this single-node setup).
+    volumes:
+      - ./config/tempo-config.yaml:/etc/tempo.yaml # Mount the Tempo configuration.
+      - tempo-data:/var/tempo # Persistent storage for WAL to ensure data durability before flushing to S3.
+    env_file: .env
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------------------
+  # INFRASTRUCTURE LAYER: Hardware Metrics (Node Exporter & cAdvisor)
+  # ----------------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    command:
+      - '--path.rootfs=/host' # Monitor the host's filesystem by mounting it
+    volumes:
+      - /:/host:ro,rslave # Mount host root to allow access to system metrics
+    networks:
+      - observability
+    restart: unless-stopped
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.0
+    container_name: cadvisor
+    privileged: true # Required to access container socket and resource stats
+    security_opt:
+      - label:disable # Disable SELinux labeling to allow access to system files
+    ports:
+      - "8080:8080" # cAdvisor web UI and metrics endpoint
+    volumes:
+      - /:/rootfs:ro # Read-only access to root filesystem
+      - /var/run:/var/run:ro # Docker socket for container stats
+      - /sys:/sys:ro # System information
+      - /var/lib/docker/:/var/lib/docker:ro # Docker state information
+      - /dev/disk/:/dev/disk:ro # Disk usage stats
+      - /etc/machine-id:/etc/machine-id:ro # Unique machine ID for metrics
+      - /var/lib/dbus/machine-id:/var/lib/dbus/machine-id:ro # DBus machine ID
+    devices:
+      - /dev/kmsg # Kernel message log access
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ----------------------------------------------------------------------------
+  # VISUALIZATION LAYER: Grafana
+  # ----------------------------------------------------------------------------
+  # Grafana is the visualization and analytics platform.
+  # It connects to all our data sources (Loki, Prometheus, Tempo) 
+  # and allows us to build dashboards and explore data.
+  # ----------------------------------------------------------------------------
   grafana:
     image: grafana/grafana:latest
+    container_name: grafana
     ports:
-      - "3001:3000"
-    environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - "3000:3000" # The main web interface functionality.
     volumes:
-      - ./config/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - grafana-data:/var/lib/grafana # Stores user data, dashboards that are manually created, and plugins.
+      - ./config:/etc/grafana/provisioning/datasources:ro # Declaratively provisions data sources on startup.
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true # Convenience for development: disables the login screen.
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin # Grants full admin rights to unauthenticated users (DEV ONLY).
+    networks:
+      - observability
     depends_on:
       - loki
       - prometheus
-      - jaeger
-    networks:
-      - obs-net
+      - tempo
+    restart: unless-stopped
 
-  # -----------------------------------------------------------
-  # 5. OPEN TELEMETRY COLLECTOR (The Brain)
-  # -----------------------------------------------------------
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.88.0
-    command: ["--config=/etc/otel-config.yaml"]
-    volumes:
-      - ./config/otel-config.yaml:/etc/otel-config.yaml
-    ports:
-      - "4317:4317" # gRPC Receiver
-      - "4318:4318" # HTTP Receiver
-      - "8889:8889" # Prometheus Exporter
-    depends_on:
-      - loki
-      - jaeger
-      - prometheus
-    networks:
-      - obs-net
-
-# -----------------------------------------------------------
-  # 6. POSTGRES (The Database)
-  # -----------------------------------------------------------
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: shop_db
-    ports:
-      - "5432:5432" # Expose to your Mac (Localhost)
-    networks:
-      - obs-net
-
-# -----------------------------------------------------------
-# NETWORKS & VOLUMES
-# -----------------------------------------------------------
-networks:
-  obs-net:
-    driver: bridge
-
+# ==============================================================================
+# PERSISTENT VOLUMES
+# Ensures data is preserved even if containers are deleted/recreated.
+# ==============================================================================
 volumes:
-  loki-data:
-    driver: local
-    
+  grafana-data: # Stores Grafana dashboards, users, and settings
+  prometheus-data: # Stores Prometheus time-series data
+  tempo-data: # Stores Tempo WAL and temporary traces
+  loki-data: # Stores Loki WAL and indexes
+  otel-data:
+    # Stores OpenTelemetry Collector buffer for retries
+
+    # ==============================================================================
+    # NETWORK DEFINITION
+    # Isolated bridge network for service-to-service communication.
+    # ==============================================================================
+networks:
+  observability:
+    driver: bridge
+    name: observability

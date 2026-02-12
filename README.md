@@ -1,72 +1,108 @@
-1. Install Required Packages
-==================================
-1.1. Core SDK + Auto Instrumentation
------------------------------------
+# 🌐 Ecom Node.js User Service: Observability Stack
 
-npm install @opentelemetry/sdk-node \
- @opentelemetry/auto-instrumentations-node \
- @opentelemetry/resources \
- @opentelemetry/semantic-conventions
-
-
-1.2. OTLP Exporters (GRPC or HTTP)
-    Use HTTP exporter — easiest and most compatible.
-----------------------------------------------------
-
-npm install \
- @opentelemetry/exporter-trace-otlp-http \
- @opentelemetry/exporter-metrics-otlp-http
-
-
-1.3. Prometheus (through Collector, not directly)
-We do not install Prometheus client — OTEL will export metrics → Collector → Prometheus.
----------------------------------------------------------------------------------------
-Extra Instrumentations
-
-npm install \
- @opentelemetry/instrumentation-express \
- @opentelemetry/instrumentation-http \
- @opentelemetry/instrumentation-pg \
- @opentelemetry/instrumentation-mongodb
+This repository contains a Node.js microservice integrated with a **Full-Stack Observability Pipeline**. It uses OpenTelemetry for auto-instrumentation, with **AWS S3** serving as the persistence layer for traces and logs.
 
 
 
+## 🏗️ Architecture Overview
 
-3. Level 2: Connection (Days 3-4)
------------------------------------
-Goal: Connect two services and visualize the timeline.
-Concept: Context Propagation.
+The observability pipeline follows the **OpenTelemetry (OTel)** standard:
+1. **App**: Node.js application using `instrumentation.js` for auto-instrumentation.
+2. **Collector**: Centralized OTel Collector processing Traces, Metrics, and Logs.
+3. **Storage (Persistence)**:
+   - **Metrics**: Prometheus (Local storage).
+   - **Traces**: Grafana Tempo (Stored in **AWS S3**).
+   - **Logs**: Grafana Loki (Stored in **AWS S3**).
+4. **Service Graph**: Automated dependency mapping via the `servicegraph` connector.
 
-If Service A calls Service B, how does Service B know it's part of Service A's trace?
-Answer: Service A adds a "Header" (HTTP Header) containing the Trace ID. This is called "Passing the Baton."
-The Project: "The Shop & The Inventory"
-We will stop using the Console (it's too messy). We will send data to Jaeger (a visualization tool).
+---
+
+## 🚀 Quick Start (Development)
+
+### 1. Environment Configuration
+Create a `.env` file in the root directory:
+```bash
+PORT=3500
+OTEL_SERVICE_NAME=ecom.nodejs.user.service
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+
+# AWS Credentials
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=us-abc-1
+```
+
+### 2. Launch Infrastructure
+```bash
+# Starts Loki, Tempo, Prometheus, Grafana, and OTel Collector
+docker-compose up -d
+```
+
+### 3. Run Application with OTel Bootstrap
+```bash
+# Node.js must be started with the instrumentation requirement
+node --require ./telemetry/instrumentation.js app.js
+```
+
+---
+
+## 👩‍💻 Developer Manual
+
+### Observability Bootstrap
+Observability is initialized via the **Bootstrap Pattern**. The file `/telemetry/instrumentation.js` handles the SDK setup. 
+
+**Auto-instrumentation covers:**
+- `http` & `https` incoming/outgoing requests.
+- `express` routing and middleware.
+- `axios` outbound API calls.
+
+### Structured Logging
+Always use the internal logger located in `./src/loggers/logger`. It ensures that every log line contains the `traceID`, allowing for **Log-to-Trace correlation** in Grafana.
+
+---
+
+## 📊 User & Operator Manual
+
+### Accessing Dashboards
+| Component | URL | Credential |
+| :--- | :--- | :--- |
+| **Grafana** | `http://localhost:3000` | admin / admin |
+| **Prometheus** | `http://localhost:9090` | N/A |
+| **Collector Metrics** | `http://localhost:8889/metrics` | N/A |
+
+### Critical Workflows
+1. **Service Dependency Graph**: Navigate to **Explore > Tempo > Service Graph**. This shows real-time traffic flow.
+2. **Log-to-Trace Correlation**: In the Loki logs panel, click on any log entry. Click the **Tempo** button next to the `traceID` to view the full request lifecycle.
 
 
-3.1 Run Two Services
----------------------------
-You need two terminals.
 
-3.2 Terminal 1 (The Inventory):
--------------------------------
-export SERVICE_NAME=inventory-service && export PORT=3001 && node app.js
+---
 
-3.3 Terminal 2 (The Shop - Calls Inventory):
---------------------------------------------
-Modify app.js to call localhost:3001 using http.get.
+## 🛠️ Operational & Debug Commands
 
-export SERVICE_NAME=shop-service && export PORT=3000 && node app.js
+### 1. Check Collector Intake
+Verify if the Collector is receiving spans from your Node.js app:
+```bash
+curl http://localhost:8888/metrics | grep otlp_receiver_accepted_spans
+```
 
+### 2. Generate Traffic for Service Graph
+Run this to generate 20 requests and force a graph update:
+```bash
+for i in {1..20}; do curl http://localhost:3500/trigger-service-graph; echo " Request $i"; sleep 0.5; done
+```
 
-Teacher's Question: Trigger the Shop service. Open Jaeger (http://localhost:16686).
-Do you see one trace with two different colors (services)?
-If yes, you have mastered Context Propagation.
+### 3. Debug AWS S3 Storage
+Check for permission or connection errors in the storage backends:
+```bash
+docker logs loki 2>&1 | grep -i "s3"
+docker logs tempo 2>&1 | grep -i "s3"
+```
 
+---
 
-
-
-
-COMMANDS
---------------
-docker compose up -d --force-recreate
-
+## 📂 Configuration Files
+- `config/collector-config.yaml`: Core OTel logic and Service Graph connector.
+- `config/loki-config.yaml`: S3 storage configuration for logs.
+- `config/tempo-config.yaml`: S3 storage configuration for traces.
+- `config/grafana_provisioning/`: Automated datasource and dashboard setup.

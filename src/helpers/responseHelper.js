@@ -2,7 +2,7 @@ const HttpCodes = require("../constants/httpCodes"); // Import HTTP status code 
 const SuccessResponse = require("../composer/success-response.js"); // Import the success response composer
 const ErrorResponse = require("../composer/error-response.js"); // Import the error response composer
 const AppMessages = require("../constants/appMessages"); // Import application message constants
-
+const {error, info}  = require("../loggers/logger.js")
 /**
  * Sends a standard success response.
  *
@@ -11,6 +11,7 @@ const AppMessages = require("../constants/appMessages"); // Import application m
  * @returns {object} - The response with status 200 and a success message.
  */
 exports.successResponse = (res, data) => {
+  info(AppMessages.SUCCESS, data)
   return res
     .status(HttpCodes.OK) // Set status code to 200
     .send(new SuccessResponse(AppMessages.SUCCESS, data || null)); // Send success response with optional data
@@ -23,6 +24,7 @@ exports.successResponse = (res, data) => {
  * @returns {object} - The response with status 400 and an error message.
  */
 exports.badRequestResponse = (res) => {
+  error(AppMessages.APP_BAD_REQUEST);
   return res
     .status(HttpCodes.BAD_REQUEST) // Set status code to 400
     .send(new ErrorResponse(AppMessages.APP_BAD_REQUEST)); // Send error response with a bad request message
@@ -49,6 +51,7 @@ exports.customSuccessResponse = (res, data, message) => {
  * @returns {object} - The response with status 500 and an error message.
  */
 exports.internalServerError = (res) => {
+  error(AppMessages.INTERNAL_SERVER_ERROR);
   return res
     .status(HttpCodes?.INTERNAL_SERVER_ERROR) // Set status code to 500
     .send(new ErrorResponse(AppMessages.INTERNAL_SERVER_ERROR)); // Send error response with internal server error message

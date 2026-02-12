@@ -1,0 +1,45 @@
+apiVersion: 1
+
+datasources:
+- name: Prometheus
+  type: prometheus
+  uid: prometheus
+  url: http://prometheus:9090
+  isDefault: true
+  jsonData:
+    httpMethod: POST
+    # This ensures Prometheus treats the collector timestamps correctly
+    timeInterval: "15s"
+
+- name: Loki
+  type: loki
+  uid: loki
+  url: http://loki:3100
+  jsonData:
+    derivedFields:
+    - name: TraceID
+      datasourceUid: tempo
+      matcherType: label
+      # For structured metadata, we use the label name directly
+      matcherRegex: traceID
+      sourceField: "traceID" # <--- THIS is the key for Loki 3.0
+      urlLabel: "View Trace in Tempo"
+      internalLink: true
+
+- name: Tempo
+  type: tempo
+  uid: tempo
+  access: proxy
+  url: http://tempo:3200
+  jsonData:
+    httpMethod: GET
+    serviceMap:
+      datasourceUid: 'prometheus' # Ensure this matches your Prometheus UID
+    nodeGraph:
+      enabled: true
+    search:
+      hide: false
+    lokiSearch:
+      datasourceUid: 'loki'
+    traceQuery:
+      lokiUid: 'loki'

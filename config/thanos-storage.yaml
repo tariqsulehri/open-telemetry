@@ -1,0 +1,15 @@
+# ==============================================================================
+# THANOS STORAGE CONFIGURATION
+# ==============================================================================
+# This configuration is used by Thanos (and potentially other components like Cortex)
+# to define the object storage backend for long-term metric retention.
+# It specifies the S3 bucket details where historical data blocks are stored.
+# ==============================================================================
+
+type: S3
+config:
+  bucket: "org-observability-prometheus-metrics" # The S3 bucket name for metrics storage.
+  endpoint: "s3.us-east-1.amazonaws.com"       # The regional S3 endpoint.
+  region: "us-east-1"                          # AWS Region where the bucket resides.
+  access_key: ${AWS_ACCESS_KEY_ID}             # AWS Access Key ID (injected from environment).
+  secret_key: ${AWS_SECRET_ACCESS_KEY}         # AWS Secret Access Key (injected from environment).
