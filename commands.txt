@@ -6,6 +6,8 @@ docker compose up -d tempo
 
 docker compose --env-file .env up -d --force-recreate tempo
 
+docker compose --env-file .env up -d --remove-orphans
+
 
 
 tempo logs were not showing:

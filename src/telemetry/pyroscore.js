@@ -1,11 +1,14 @@
 // src/telemetry/pyroscope.js
 const Pyroscope = require('@pyroscope/nodejs');
+const { context, trace } = require('@opentelemetry/api');
 
 Pyroscope.init({
-    serverAddress: 'http://pyroscope:4040',
     appName: 'ecom.nodejs.user.service',
+    serverAddress: 'http://localhost:4040',
+    enableTracing: true,
     tags: {
         env: process.env.NODE_ENV || 'development',
+        region: 'lahore',
     },
 });
 
