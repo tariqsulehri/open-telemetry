@@ -27,16 +27,23 @@ receivers:
 # Bridges data between pipelines (e.g., converting Traces into Metrics).
 # ==============================================================================
 connectors:
-  # ServiceGraph: Generates service-to-service dependency maps from span data
-  # It analyzes trace edges to build a directed graph of service interactions (RED metrics).
   servicegraph:
     metrics_flush_interval: 15s
-    latency_histogram_buckets: [ 100ms, 250ms, 1s, 5s, 10s ]
-    store:
-      ttl: 5s # Grace period to wait for matching client/server spans
-      max_items: 1000
+    latency_histogram_buckets: [100ms, 250ms, 500ms, 1s, 2s, 5s]
     dimensions:
-    - service.name
+      - service.name
+
+  spanmetrics:
+    metrics_flush_interval: 15s
+    histogram:
+      explicit:
+        buckets: [0.1s, 0.25s, 0.5s, 1s, 2s, 5s]
+    dimensions:
+      # - name: span.kind
+      - name: http.method
+      - name: http.route
+      - name: http.status_code
+
 
 # ==============================================================================
 # PROCESSORS
@@ -131,11 +138,11 @@ service:
       receivers: [ otlp ]
       processors: [ batch ]
       # exporters: [ otlp/tempo, servicegraph ]
-      exporters: [ otlp/tempo, servicegraph ]
+      exporters: [ otlp/tempo, servicegraph, spanmetrics ]
 
     # Metrics Pipeline: App/NodeExporter/ServiceGraph -> Prometheus
     metrics:
-      receivers: [ otlp, prometheus, servicegraph ]
+      receivers: [ otlp, prometheus, servicegraph, spanmetrics ]
       # receivers: [ otlp, prometheus ]
       processors: [ batch ]
       exporters: [ prometheus ]

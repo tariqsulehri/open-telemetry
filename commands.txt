@@ -6,6 +6,8 @@ docker compose up -d tempo
 
 docker compose --env-file .env up -d --force-recreate tempo
 
+docker compose --env-file .env up -d --remove-orphans
+
 
 
 tempo logs were not showing:
@@ -16,3 +18,8 @@ chmod -R 777 ./tempo-data
 remove all volumes:
 docker compose down -v
 docker-compose --env-file .env up -d
+
+
+Test Profile
+# Hit the endpoint 20 times in a loop
+for i in {1..20}; do curl http://localhost:3500/test-profile; echo " Done $i"; done
