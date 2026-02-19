@@ -1,108 +1,55 @@
-# 🌐 Ecom Node.js User Service: Observability Stack
+This is perfect. Your console output confirms that your Winston logger is correctly structured for high-end observability. It includes the trace_id and span_id inside the JSON object, which is the gold standard for correlation.
 
-This repository contains a Node.js microservice integrated with a **Full-Stack Observability Pipeline**. It uses OpenTelemetry for auto-instrumentation, with **AWS S3** serving as the persistence layer for traces and logs.
+Now, let's configure Grafana to recognize these fields so you can jump from a log line to a trace with one click.
 
+1. Configure Loki: The "Log to Trace" Link
+Since your logs are JSON, we need to tell the Loki data source to extract the trace_id and create an internal link to Tempo.
 
+Go to Connections > Data Sources > Loki.
 
-## 🏗️ Architecture Overview
+Scroll down to Derived Fields and click Add field.
 
-The observability pipeline follows the **OpenTelemetry (OTel)** standard:
-1. **App**: Node.js application using `instrumentation.js` for auto-instrumentation.
-2. **Collector**: Centralized OTel Collector processing Traces, Metrics, and Logs.
-3. **Storage (Persistence)**:
-   - **Metrics**: Prometheus (Local storage).
-   - **Traces**: Grafana Tempo (Stored in **AWS S3**).
-   - **Logs**: Grafana Loki (Stored in **AWS S3**).
-4. **Service Graph**: Automated dependency mapping via the `servicegraph` connector.
+Enter the following details:
 
----
+Name: TraceID
 
-## 🚀 Quick Start (Development)
+Matcher Type: Regex
 
-### 1. Environment Configuration
-Create a `.env` file in the root directory:
-```bash
-PORT=3500
-OTEL_SERVICE_NAME=ecom.nodejs.user.service
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+Regex: (?:"trace_id"):\s*"(\w+)" (This specifically targets your trace_id field).
 
-# AWS Credentials
-AWS_ACCESS_KEY_ID=your_access_key
-AWS_SECRET_ACCESS_KEY=your_secret_key
-AWS_REGION=us-abc-1
-```
+Query: ${__value.raw}
 
-### 2. Launch Infrastructure
-```bash
-# Starts Loki, Tempo, Prometheus, Grafana, and OTel Collector
-docker-compose up -d
-```
+Internal Link: Toggle On.
 
-### 3. Run Application with OTel Bootstrap
-```bash
-# Node.js must be started with the instrumentation requirement
-node --require ./telemetry/instrumentation.js app.js
-```
+Data Source: Select your Tempo data source.
 
----
+Save & Test.
 
-## 👩‍💻 Developer Manual
+2. Configure Tempo: The "Trace to Log" Link
+To go backward—finding all logs associated with a specific trace while looking at a timeline in Tempo:
 
-### Observability Bootstrap
-Observability is initialized via the **Bootstrap Pattern**. The file `/telemetry/instrumentation.js` handles the SDK setup. 
+Go to Connections > Data Sources > Tempo.
 
-**Auto-instrumentation covers:**
-- `http` & `https` incoming/outgoing requests.
-- `express` routing and middleware.
-- `axios` outbound API calls.
+Navigate to the Trace to Logs tab.
 
-### Structured Logging
-Always use the internal logger located in `./src/loggers/logger`. It ensures that every log line contains the `traceID`, allowing for **Log-to-Trace correlation** in Grafana.
+Data Source: Select your Loki data source.
 
----
+Tags: In the tags section, add a mapping:
 
-## 📊 User & Operator Manual
+Key: service.name
 
-### Accessing Dashboards
-| Component | URL | Credential |
-| :--- | :--- | :--- |
-| **Grafana** | `http://localhost:3000` | admin / admin |
-| **Prometheus** | `http://localhost:9090` | N/A |
-| **Collector Metrics** | `http://localhost:8889/metrics` | N/A |
+Value: service (This maps the trace attribute to your Loki label).
 
-### Critical Workflows
-1. **Service Dependency Graph**: Navigate to **Explore > Tempo > Service Graph**. This shows real-time traffic flow.
-2. **Log-to-Trace Correlation**: In the Loki logs panel, click on any log entry. Click the **Tempo** button next to the `traceID` to view the full request lifecycle.
+Filter by Trace ID: Enable this. This ensures that when you click "Logs for this span," Loki only shows logs that contain your exact trace_id.
 
+3. How to use it (The Workflow)
+Now that the "plumbing" is done, your debugging workflow changes:
 
+In Explore (Loki): When you see your success message (Returning success status code: 200), expand the log line. You will see a blue link labeled Tempo next to the trace_id. Click it to see the full waterfall of that specific request.
 
----
+In Explore (Tempo): If you are looking at a slow trace and want to know what the application was "thinking" during a specific span, click the Logs for this span button. It will open a split-view with the exact Winston logs you generated for that timeframe.
 
-## 🛠️ Operational & Debug Commands
+4. Architect's Note: Performance
+You are currently logging the trace_id as part of the JSON message body. This is excellent for performance.
 
-### 1. Check Collector Intake
-Verify if the Collector is receiving spans from your Node.js app:
-```bash
-curl http://localhost:8888/metrics | grep otlp_receiver_accepted_spans
-```
-
-### 2. Generate Traffic for Service Graph
-Run this to generate 20 requests and force a graph update:
-```bash
-for i in {1..20}; do curl http://localhost:3500/trigger-service-graph; echo " Request $i"; sleep 0.5; done
-```
-
-### 3. Debug AWS S3 Storage
-Check for permission or connection errors in the storage backends:
-```bash
-docker logs loki 2>&1 | grep -i "s3"
-docker logs tempo 2>&1 | grep -i "s3"
-```
-
----
-
-## 📂 Configuration Files
-- `config/collector-config.yaml`: Core OTel logic and Service Graph connector.
-- `config/loki-config.yaml`: S3 storage configuration for logs.
-- `config/tempo-config.yaml`: S3 storage configuration for traces.
-- `config/grafana_provisioning/`: Automated datasource and dashboard setup.
+Warning: Never move trace_id into a Loki label (index). Since every trace ID is unique, doing so would create "High Cardinality" and eventually crash your Loki database. Keep it as a "derived field" as we configured above.

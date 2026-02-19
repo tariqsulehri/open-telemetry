@@ -54,3 +54,9 @@ storage:
       access_key: ${AWS_ACCESS_KEY_ID} # AWS Access Key ID (from environment variable)
       secret_key: ${AWS_SECRET_ACCESS_KEY} # AWS Secret Access Key (from environment variable)
       insecure: false # Set to true if using non-SSL endpoint (e.g., MinIO locally), false for AWS S3
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics, local-blocks] # enables metrics generator
+      generate_native_histograms: both

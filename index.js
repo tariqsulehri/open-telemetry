@@ -1,31 +1,119 @@
-require('./src/telemetry/instrumentation');
+/**
+ * ============================================================
+ * 1️⃣  INITIALIZE TELEMETRY FIRST (VERY IMPORTANT)
+ * ============================================================
+ */
+require('./src/telemetry/instrumentation'); // OTEL must be first
+require('./src/telemetry/pyroscore');
 
+/**
+ * ============================================================
+ * 2️⃣  IMPORTS
+ * ============================================================
+ */
 const express = require('express');
-const otel = require('@opentelemetry/api');
+const dotenv = require('dotenv');
+const axios = require('axios');
+const { context, trace } = require('@opentelemetry/api');
+const Pyroscope = require('@pyroscope/nodejs');
 const { rollTheDice } = require('./dice.js');
-const app = express();
-const dotenv = require("dotenv");
-const axios = require("axios")
 const { info, error, warn } = require('./src/loggers/logger');
 
 dotenv.config();
 
+const app = express();
+const nodePort = process.env.PORT || 3500;
+const PYROSCOPE_URL = process.env.PYROSCOPE_URL || 'http://pyroscope:4040';
+const PROFILE_THRESHOLD_MS = 500;
+
+/**
+ * ============================================================
+ * 3️⃣  MIDDLEWARE
+ * ============================================================
+ */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Initialize Routes
-// require('./src/startup/routes')(app);
+/**
+ * 🔥 Conditional Slow-Trace Profiling Middleware
+ */
+// app.use((req, res, next) => {
+//     const startTime = Date.now();
 
-//---- External Call
-// This route acts as a 'Client' calling a 'Server'
+//     const span = trace.getSpan(context.active());
+//     const traceId = span?.spanContext()?.traceId || 'unknown';
+
+//     Pyroscope.init({
+//         appName: 'ecom.nodejs.user.service', // MUST match OTEL service.name
+//         serverAddress: 'http://localhost:4040',
+//         tags: {
+//             route: req.path,
+//             method: req.method,
+//             trace_id: traceId,
+//         },
+//     });
+
+//     Pyroscope.start();
+
+//     // res.on('finish', async () => {
+//     //     try {
+//     //         const duration = Date.now() - startTime;
+
+//     //         await Pyroscope.stop();
+
+//     //         // Keep only slow OR server-error requests
+//     //         if (duration < PROFILE_THRESHOLD_MS && res.statusCode < 500) {
+//     //             await Pyroscope.delete();
+//     //         }
+
+//     //     } catch (err) {
+//     //         console.error('Profiler error:', err.message);
+//     //     }
+//     // });
+
+//     next();
+// });
+
+/**
+ * ============================================================
+ * 4️⃣  ROUTES
+ * ============================================================
+ */
+
+app.get('/debug/cpu-stress', (req, res) => {
+    const start = Date.now();
+    while (Date.now() - start < 2000) {
+        Math.random() * Math.random();
+    }
+    res.send('CPU stress test complete');
+});
+
+app.get('/slow', (req, res) => {
+    info('Slow endpoint started');
+
+    const start = Date.now();
+    while (Date.now() - start < 1000) { }
+
+    info('Slow endpoint finished');
+
+    res.send('slow done');
+});
+
+
+app.get('/hello', (req, res) => {
+    info('Received request for /hello endpoint.');
+    setTimeout(() => {
+        res.json('Hello World');
+    }, 500);
+});
+
 app.get('/trigger-service-graph', async (req, res) => {
-    info('Triggering internal call to create a graph edge...');
+    info('Triggering internal call...');
     try {
-        // CALLING ITSELF (Port 3500)
-        const response = await axios.get(`http://localhost:3500/hello`);
+        const response = await axios.get(`http://localhost:${nodePort}/hello`);
         res.status(200).json({
-            message: "Check metrics in 15s - Both spans produced!",
-            data: response.data
+            message: 'Check metrics in 15s - Both spans produced!',
+            data: response.data,
         });
     } catch (err) {
         error('Failed', { error: err.message });
@@ -33,104 +121,27 @@ app.get('/trigger-service-graph', async (req, res) => {
     }
 });
 
-// --- Standard Routes ---
-app.get('/hello', (req, res) => {
-    info('Received request for /hello endpoint.', { endpoint: '/hello' });
-    setTimeout(() => {
-        res.json('Hello World');
-    }, 500); // Simulates network/db latency
-});
-
 app.get('/rolldice', (req, res) => {
-    // 1. First, extract and parse the variable from the request
     const rolls = req.query.rolls ? parseInt(req.query.rolls.toString()) : NaN;
 
-    // 2. Now you can safely use 'rolls' for logging
-    info('Received request for /rolldice endpoint.', { customTag: 'node.service.otel', rolls });
-
-    // 3. Validation
     if (isNaN(rolls)) {
-        res.status(400).send("Request parameter 'rolls' is missing or not a number.");
-        return;
+        return res.status(400).send("Request parameter 'rolls' is missing or not a number.");
     }
-    // 4. Pass it to your logic
-    res.json(JSON.stringify(rollTheDice(rolls, 1, 6)));
+
+    info('Received request for /rolldice', { rolls });
+    res.json(rollTheDice(rolls, 1, 6));
 });
 
 /**
- * 1. SIMULATED ERROR: For testing Loki Error highlighting & Tempo error spans
+ * ============================================================
+ * 5️⃣  ERROR TEST ROUTES
+ * ============================================================
  */
 app.get('/error_500', (req, res) => {
-    try {
-        error('A critical failure occurred!', { detail: 'Database connection simulated timeout' });
-        throw new Error("Simulated Backend Crash");
-    } catch (e) {
-        error(`Caught Exception: ${e.message}`);
-        res.status(500).json({ error: true, message: e.message });
-    }
+    error('Simulated Backend Crash');
+    res.status(500).json({ error: true, message: 'Simulated Backend Crash' });
 });
 
-app.get('/error_400', (req, res) => {
-    try {
-        error('A Bad request!', { detail: 'Invalid request format/data provided' });
-        throw new Error("Bad Request");
-    } catch (e) {
-        error(`Caught Exception: ${e.message}`);
-        res.status(400).json({ error: true, message: e.message });
-    }
-});
-
-app.get('/error_403', (req, res) => {
-    try {
-        error('Forbidden!', { detail: 'Access denied...' });
-        throw new Error("Bad Request");
-    } catch (e) {
-        error(`Forbidden!: ${e.message}`);
-        res.status(403).json({ error: true, message: e.message });
-    }
-});
-
-app.get('/error_404', (req, res) => {
-    try {
-        error('Not Found!', { detail: 'Requested resource not found.. ...' });
-        throw new Error("Bad Request");
-    } catch (e) {
-        error(`Not Found!: ${e.message}`);
-        res.status(404).json({ error: true, message: e.message });
-    }
-});
-
-app.get('/error_408', (req, res) => {
-    try {
-        error('Time Out!', { detail: 'Requested time out.. ...' });
-        throw new Error("Time out!");
-    } catch (e) {
-        error(`Time out!: ${e.message}`);
-        res.status(408).json({ error: true, message: e.message });
-    }
-});
-
-/**
- * 2. MIXED LOGGING: For testing log levels in Grafana
- */
-app.get('/slow-search', (req, res) => {
-    info('Starting slow search operation...');
-
-    // Simulate a warning halfway through
-    setTimeout(() => {
-        warn('Search is taking longer than expected...', { threshold: '200ms' });
-    }, 300);
-
-    setTimeout(() => {
-        info('Search completed successfully.');
-        res.json({ results: [], time: '800ms' });
-    }, 800);
-
-});
-
-/**
- * 3. RANDOM STATUS: For testing Prometheus metric spikes (4xx/5xx)
- */
 app.get('/random-status', (req, res) => {
     const codes = [200, 201, 400, 401, 403, 500, 503];
     const randomCode = codes[Math.floor(Math.random() * codes.length)];
@@ -144,8 +155,11 @@ app.get('/random-status', (req, res) => {
     res.status(randomCode).send(`Status returned: ${randomCode}`);
 });
 
-let nodePort = process.env.PORT || 3500;
-
+/**
+ * ============================================================
+ * 6️⃣  START SERVER
+ * ============================================================
+ */
 app.listen(nodePort, () => {
     info(`🚀 App Server running on port: ${nodePort}`);
 });
