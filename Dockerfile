@@ -1,24 +1,34 @@
-# Dockerfile (Final Version)
-# Use the current Node.js LTS version on Alpine for a small image size
-FROM node:22-alpine
+# -----------------------------
+# 1️⃣ Builder Stage
+# -----------------------------
+FROM node:22-bookworm-slim AS builder
 
-# Set the working directory inside the container
 WORKDIR /usr/src/app
 
-# Copy package files first to leverage Docker's build cache. 
-# This means npm install only re-runs if package.json changes.
 COPY package*.json ./
 
-# Install app dependencies
-RUN npm install
+RUN npm install -g npm@11.10.1
 
-# Bundle the rest of the app source code
+RUN npm ci --omit=dev
+
+# -----------------------------
+# 2️⃣ Runtime Stage
+# -----------------------------
+FROM node:22-bookworm-slim
+
+RUN apt-get update && apt-get install -y tini && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /usr/src/app
+
+COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY . .
 
-# EXPOSE: Informational port. Use the port your app is listening on (3500)
+RUN useradd -m appuser
+USER appuser
+
+ENV NODE_ENV=production
+
 EXPOSE 3500
 
-# CMD: Execute the application. 
-# We use the --require flag to load the OpenTelemetry instrumentation 
-# file *before* the main application file (app.js) executes.
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "index.js"]
