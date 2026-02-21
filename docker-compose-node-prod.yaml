@@ -1,0 +1,64 @@
+version: "3.9" # Compose file format version
+
+# Logical project name (used for network + container prefixing)
+name: myapp-prod
+
+services:
+  app:
+    # Custom container name (easier for logs + monitoring)
+    container_name: myapp-prod-container
+
+    # Build configuration
+    build:
+      context: . # Build from current directory
+      dockerfile: Dockerfile # Explicit Dockerfile name
+
+    # Final image name + tag
+    image: myapp:prod
+
+    # Always restart container unless manually stopped
+    # Recommended for production resilience
+    restart: unless-stopped
+
+    # Port mapping
+    # Format: "HOST_PORT:CONTAINER_PORT"
+    ports:
+      - "3500:3500"
+
+    # Environment variables defined directly
+    # These override Dockerfile ENV if same key exists
+    environment:
+      NODE_ENV: production
+      PORT: 3500
+
+    # Load additional environment variables from file
+    # Useful for secrets and DB configs
+    env_file:
+      - .env.production
+
+    # Healthcheck for container monitoring
+    # Docker marks container unhealthy if this fails
+    healthcheck:
+      test: [ "CMD", "wget", "-qO-", "http://localhost:3500/health" ]
+      interval: 30s # Run every 30 seconds
+      timeout: 5s # Fail if no response in 5 seconds
+      retries: 3 # Mark unhealthy after 3 failures
+      start_period: 10s # Wait 10s before starting health checks
+
+    # Attach service to isolated internal network
+    networks:
+      - myapp-network
+
+    # Resource control (important in production)
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0" # Max 1 CPU core
+          memory: 512M # Max memory usage
+        reservations:
+          memory: 256M # Minimum guaranteed memory
+
+# Custom bridge network for service isolation
+networks:
+  myapp-network:
+    driver: bridge

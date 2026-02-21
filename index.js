@@ -23,8 +23,6 @@ dotenv.config();
 
 const app = express();
 const nodePort = process.env.PORT || 3500;
-const PYROSCOPE_URL = process.env.PYROSCOPE_URL || 'http://pyroscope:4040';
-const PROFILE_THRESHOLD_MS = 500;
 
 /**
  * ============================================================
@@ -35,50 +33,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /**
- * 🔥 Conditional Slow-Trace Profiling Middleware
- */
-// app.use((req, res, next) => {
-//     const startTime = Date.now();
-
-//     const span = trace.getSpan(context.active());
-//     const traceId = span?.spanContext()?.traceId || 'unknown';
-
-//     Pyroscope.init({
-//         appName: 'ecom.nodejs.user.service', // MUST match OTEL service.name
-//         serverAddress: 'http://localhost:4040',
-//         tags: {
-//             route: req.path,
-//             method: req.method,
-//             trace_id: traceId,
-//         },
-//     });
-
-//     Pyroscope.start();
-
-//     // res.on('finish', async () => {
-//     //     try {
-//     //         const duration = Date.now() - startTime;
-
-//     //         await Pyroscope.stop();
-
-//     //         // Keep only slow OR server-error requests
-//     //         if (duration < PROFILE_THRESHOLD_MS && res.statusCode < 500) {
-//     //             await Pyroscope.delete();
-//     //         }
-
-//     //     } catch (err) {
-//     //         console.error('Profiler error:', err.message);
-//     //     }
-//     // });
-
-//     next();
-// });
-
-/**
  * ============================================================
  * 4️⃣  ROUTES
  * ============================================================
  */
+
+
+app.get('/health', (req, res) => {
+    const span = trace.getSpan(context.active());
+    console.log("Active span exists?", !!span);
+    info('Received request for /health endpoint.');
+    res.status(200).json('OK');
+});
 
 app.get('/debug/cpu-stress', (req, res) => {
     const start = Date.now();
@@ -96,16 +62,10 @@ app.get('/slow', (req, res) => {
 
     info('Slow endpoint finished');
 
-    res.send('slow done');
+    res.status(200).send('slow done');
 });
 
 
-app.get('/hello', (req, res) => {
-    info('Received request for /hello endpoint.');
-    setTimeout(() => {
-        res.json('Hello World');
-    }, 500);
-});
 
 app.get('/trigger-service-graph', async (req, res) => {
     info('Triggering internal call...');

@@ -23,3 +23,14 @@ docker-compose --env-file .env up -d
 Test Profile
 # Hit the endpoint 20 times in a loop
 for i in {1..20}; do curl http://localhost:3500/test-profile; echo " Done $i"; done
+
+Running Node Application:
+--------------------------
+If using normal Docker:
+docker compose --compatibility -f docker-compose-node-prod.yaml up -d
+
+🚀 Production Command (Explicit Run)
+docker compose -f docker-compose-node-prod.yaml up -d --build
+
+Stop:
+docker compose -f docker-compose-node-prod.yaml down

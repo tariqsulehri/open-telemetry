@@ -34,7 +34,10 @@ services:
     container_name: prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
       - '--storage.tsdb.retention.time=7d'
+      - '--storage.tsdb.min-block-duration=2h'
+      - '--storage.tsdb.max-block-duration=2h'
       - '--web.enable-lifecycle'
       # REQUIRED: Allows Tempo's Metrics-Generator to push data here
       - '--web.enable-remote-write-receiver'
@@ -50,7 +53,117 @@ services:
       - observability
     restart: unless-stopped
 
-  # --- STORAGE: Logs (Loki) ---
+  # ==============================================================================
+  # SERVICE: thanos-sidecar
+  # PURPOSE:
+  #   Uploads Prometheus blocks to S3.
+  #   Exposes Prometheus data to Thanos Query.
+  # ==============================================================================
+  thanos-sidecar:
+    image: quay.io/thanos/thanos:v0.35.0
+    container_name: thanos-sidecar
+    user: "0:0"
+    command:
+      - sidecar
+      - --tsdb.path=/prometheus
+      - --prometheus.url=http://prometheus:9090
+      - --grpc-address=0.0.0.0:10901
+      - --http-address=0.0.0.0:10902
+      - --objstore.config-file=/etc/thanos/thanos-storage.yaml
+    volumes:
+      - prometheus-data:/prometheus
+      - ./config/thanos-storage.yaml:/etc/thanos/thanos-storage.yaml
+    ports:
+      - "10901:10901"
+      - "10912:10902"
+    depends_on:
+      - prometheus
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ==============================================================================
+  # SERVICE: thanos-store
+  # PURPOSE:
+  #   Reads historical metric blocks from S3.
+  #   Makes long-term metrics queryable.
+  # ==============================================================================
+
+  thanos-store:
+    image: quay.io/thanos/thanos:v0.35.0
+    container_name: thanos-store
+    command:
+      - store
+      - --grpc-address=0.0.0.0:10901
+      - --http-address=0.0.0.0:10902
+      - --objstore.config-file=/etc/thanos/thanos-storage.yaml
+    volumes:
+      - ./config/thanos-storage.yaml:/etc/thanos/thanos-storage.yaml
+    ports:
+      - "10911:10901"
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ==============================================================================
+  # SERVICE: thanos-compactor
+  # PURPOSE:
+  #   - Merges small Prometheus blocks
+  #   - Creates downsampled data (5m / 1h)
+  #   - Enforces retention policy
+  #   - Optimizes S3 storage and query performance
+  # ==============================================================================
+
+  thanos-compactor:
+    image: quay.io/thanos/thanos:v0.35.0
+    container_name: thanos-compactor
+    command:
+      - compact
+      - --data-dir=/var/thanos/compact
+      - --objstore.config-file=/etc/thanos/thanos-storage.yaml
+      - --retention.resolution-raw=30d
+      - --retention.resolution-5m=90d
+      - --retention.resolution-1h=365d
+      - --wait
+    volumes:
+      - ./config/thanos-storage.yaml:/etc/thanos/thanos-storage.yaml
+      - thanos-compact-data:/var/thanos/compact
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ==============================================================================
+  # SERVICE: thanos-query
+  # PURPOSE:
+  #   Global query layer.
+  #   Merges:
+  #     - Real-time Prometheus data (sidecar)
+  #     - Historical S3 data (store)
+  #   This becomes Grafana's datasource.
+  # ==============================================================================
+  thanos-query:
+    image: quay.io/thanos/thanos:v0.35.0
+    container_name: thanos-query
+    command:
+      - query
+      - --http-address=0.0.0.0:9091
+      - --grpc-address=0.0.0.0:10903
+      - --store=thanos-sidecar:10901
+      - --store=thanos-store:10901
+    ports:
+      - "9091:9091"
+    depends_on:
+      - thanos-sidecar
+      - thanos-store
+    networks:
+      - observability
+    restart: unless-stopped
+
+  # ==============================================================================
+  # SERVICE: loki
+  # PURPOSE:
+  #   Stores and queries log data.
+  # ==============================================================================
   loki:
     image: grafana/loki:3.5.0
     container_name: loki
@@ -153,6 +266,7 @@ services:
 volumes:
   grafana-data:
   prometheus-data:
+  thanos-compact-data:
   tempo-data:
   loki-data:
   otel-data:
