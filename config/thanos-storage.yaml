@@ -13,3 +13,4 @@ config:
   region: "us-east-1"                          # AWS Region where the bucket resides.
   access_key: ${AWS_ACCESS_KEY_ID}             # AWS Access Key ID (injected from environment).
   secret_key: ${AWS_SECRET_ACCESS_KEY}         # AWS Secret Access Key (injected from environment).
+  insecure: false
