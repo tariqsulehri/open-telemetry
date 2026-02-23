@@ -6,11 +6,11 @@
 # It specifies the S3 bucket details where historical data blocks are stored.
 # ==============================================================================
 
-type: S3
-config:
-  bucket: "org-observability-prometheus-metrics" # The S3 bucket name for metrics storage.
-  endpoint: "s3.us-east-1.amazonaws.com"       # The regional S3 endpoint.
+type: S3 # Specifies the type of the object storage mechanism wrapper used by Thanos (S3, GCS, AZURE)
+config: # The specific configuration values for the defined type
+  bucket: "org-observability-prometheus-metrics" # The actual S3 bucket name for metrics storage.
+  endpoint: "s3.us-east-1.amazonaws.com"       # The regional S3 endpoint url.
   region: "us-east-1"                          # AWS Region where the bucket resides.
-  access_key: ${AWS_ACCESS_KEY_ID}             # AWS Access Key ID (injected from environment).
-  secret_key: ${AWS_SECRET_ACCESS_KEY}         # AWS Secret Access Key (injected from environment).
-  insecure: false
+  access_key: ${AWS_ACCESS_KEY_ID}             # AWS Access Key ID (injected dynamically from environment variables).
+  secret_key: ${AWS_SECRET_ACCESS_KEY}         # AWS Secret Access Key (injected dynamically from environment variables).
+  insecure: false                              # Ensure secure (HTTPS) communication with AWS S3. True would use plain HTTP for MinIO etc.

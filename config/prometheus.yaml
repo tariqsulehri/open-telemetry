@@ -1,87 +1,99 @@
 # ==============================================================================
 # PROMETHEUS CONFIGURATION - PRODUCTION ENVIRONMENT
-# Purpose: Centralized metrics collection for the E-com Observability Stack
+# Purpose: Centralized metrics collection for the e-commerce Observability Stack.
+# It acts as the primary time-series database and alerting engine.
 # ==============================================================================
 
-global:
-  scrape_interval: 15s # How often to fetch metrics from targets (15s is standard for production)
-  evaluation_interval: 15s # How often to evaluate alerting rules
-  scrape_timeout: 10s # Timeout for a single scrape request
+global: # Global configuration shared across all of Prometheus
+  scrape_interval: 15s     # Frequency of metric collection (15s balances resolution and storage)
+  evaluation_interval: 15s # Frequency of evaluating alerting rules (matches scrape internal for promptness)
+  scrape_timeout: 10s    # Maximum time to wait for a target to respond before marking as failed
 
-  # External labels allow for easier identification in multi-cluster environments
-  # These are applied to every metric exported by this Prometheus instance.
-  external_labels:
-    cluster: production
-    environment: prod
-    owner: devops-team
+  # External labels allow for easier identification in multi-cluster environments.
+  # These are appended to every metric exported by this Prometheus instance, ensuring global uniqueness.
+  external_labels: # Labels appended to all data sent out (e.g. to Thanos)
+    cluster: production # Identify the cluster this prometheus belongs to
+    environment: prod # Identify the environment
+    owner: devops-team # Identify team ownership
 
 # ==============================================================================
 # RULE FILES
 # ==============================================================================
-# Load alerting and recording rules. 
-# Includes: High CPU, Disk I/O Latency, and Application 5xx Errors.
-rule_files:
-- "/etc/prometheus/prometheus_rules/prometheus_rules.yaml"
+# Rule files define alerting logic and recording rules to precompute metrics.
+# Includes alerts for: High CPU usage, Critical Disk Space, and Application Alerts (5xx Errors).
+rule_files: # List of files containing recording and alerting rules
+- "/etc/prometheus/prometheus_rules/prometheus_rules.yaml" # Load the defined rules
 
 # ==============================================================================
 # SCRAPE CONFIGURATIONS
 # ==============================================================================
-scrape_configs:
+# Defines exactly where Prometheus should gather its data metrics from.
+scrape_configs: # The list of jobs Prometheus will perform
 
-# --- SELF MONITORING ---
-# Monitor Prometheus itself to ensure the monitoring system is healthy
-- job_name: 'prometheus'
-  static_configs:
-  - targets: [ 'prometheus:9090' ]
+# ------------------------------------------------------------------------------
+# SELF MONITORING
+# ------------------------------------------------------------------------------
+# Monitor Prometheus internally to ensure the monitoring system itself remains healthy.
+- job_name: 'prometheus' # The job name assigned to scraped metrics
+  static_configs: # Statically configured targets
+  - targets: [ 'prometheus:9090' ] # Scrape the internal Prometheus API
 
-# --- VISUALIZATION LAYER ---
-# Monitor Grafana for usage statistics and performance
-- job_name: 'grafana'
-  static_configs:
-  - targets: [ 'grafana:3000' ]
+# ------------------------------------------------------------------------------
+# VISUALIZATION LAYER
+# ------------------------------------------------------------------------------
+# Monitor Grafana for underlying usage statistics and potential rendering performance issues.
+- job_name: 'grafana' # Job to scrape Grafana's internal metrics
+  static_configs: # Static targets
+  - targets: [ 'grafana:3000' ] # The Grafana port
 
-# --- STORAGE & LOGGING ---
-# Monitor Loki for ingestion rates, query performance, and errors
-- job_name: 'loki'
-  static_configs:
-  - targets: [ 'loki:3100' ]
+# ------------------------------------------------------------------------------
+# STORAGE & LOGGING BACKENDS
+# ------------------------------------------------------------------------------
+# Monitor Loki for ingestion rates, expensive query performance, and indexing errors.
+- job_name: 'loki' # Job to scrape Loki metrics
+  static_configs: # Static targets
+  - targets: [ 'loki:3100' ] # The Loki HTTP port
 
-# Monitor Tempo for trace ingestion rates and distributor health
-- job_name: 'tempo'
-  static_configs:
-  - targets: [ 'tempo:3200' ]
+# Monitor Tempo for trace ingestion volume, storage flush efficiency, and overall distributor health.
+- job_name: 'tempo' # Job to scrape Tempo metrics
+  static_configs: # Static targets
+  - targets: [ 'tempo:3200' ] # The Tempo HTTP port
 
-# --- INFRASTRUCTURE MONITORING (Host & Hardware) ---
-# node-exporter provides OS-level metrics (CPU, RAM, Disk, Network)
-- job_name: 'node-exporter'
-  relabel_configs:
-  - source_labels: [ __address__ ]
-    target_label: instance
-    replacement: 'physical-host' # Relabel to a friendly name
-  static_configs:
-  - targets: [ 'node-exporter:9100' ]
+# ------------------------------------------------------------------------------
+# INFRASTRUCTURE MONITORING (Host & Hardware)
+# ------------------------------------------------------------------------------
+# node-exporter provides vital OS-level metrics (CPU consumption, memory limits, Disk I/O, Network traffic).
+- job_name: 'node-exporter' # Job for host metrics
+  relabel_configs: # Rules to rewrite labels before storing
+  - source_labels: [ __address__ ] # Take the address
+    target_label: instance # Replace the 'instance' label
+    replacement: 'physical-host' # Relabel instances to a human-friendly name for dashboards (instead of IP:port)
+  static_configs: # Static targets
+  - targets: [ 'node-exporter:9100' ] # The node-exporter port
 
-# cAdvisor provides container-level resource usage and isolation
-- job_name: 'cadvisor'
-  relabel_configs:
-  - source_labels: [ __address__ ]
-    target_label: instance
-    replacement: 'docker-engine' # Relabel to a friendly name
-  static_configs:
-  - targets: [ 'cadvisor:8080' ]
+# cAdvisor provides deep container-level resource usage constraints and isolation behavior statistics.
+- job_name: 'cadvisor' # Job for container metrics
+  relabel_configs: # Rules to rewrite labels
+  - source_labels: [ __address__ ] # Take the address
+    target_label: instance # Replace the 'instance' label
+    replacement: 'docker-engine' # Relabel instances to a human-friendly name for dashboards (instead of IP:port)
+  static_configs: # Static targets
+  - targets: [ 'cadvisor:8080' ] # The cAdvisor port
 
-# --- TELEMETRY PIPELINE (OpenTelemetry) ---
-# Internal metrics for the Collector's own performance (Batching, Queue size)
-- job_name: 'otel-collector-telemetry'
-  metric_relabel_configs:
-  - source_labels: [ __name__ ]
-    regex: 'otelcol_processor_batch_.*' # Only keep batch processor metrics to reduce noise
-    action: keep
-  static_configs:
-  - targets: [ 'otel-collector:8888' ]
+# ------------------------------------------------------------------------------
+# TELEMETRY PIPELINE (OpenTelemetry)
+# ------------------------------------------------------------------------------
+# Internal metrics detailing the Collector's own performance (e.g., Batching efficiency, Queue saturation).
+- job_name: 'otel-collector-telemetry' # Job for collector's internal metrics
+  metric_relabel_configs: # Rules to drop or keep specific metrics after scraping
+  - source_labels: [ __name__ ] # Look at metric name
+    regex: 'otelcol_processor_batch_.*' # Aggressively filter to only keep batch processor metrics, drastically reducing noise
+    action: keep # Keep only matching metrics, drop the rest
+  static_configs: # Static targets
+  - targets: [ 'otel-collector:8888' ] # The collector's internal metric endpoint
 
-# Application-level metrics exported via OTLP from Node.js
-# The Collector exposes these on port 8889 for Prometheus to scrape
-- job_name: 'otel-collector-app-metrics'
-  static_configs:
-  - targets: [ 'otel-collector:8889' ]
+# Application-level metrics exported securely via OTLP from instrumented applications (Node.js).
+# The OpenTelemetry Collector exposes these gathered metrics on port 8889 for Prometheus integration.
+- job_name: 'otel-collector-app-metrics' # Job for app metrics processed by OTel
+  static_configs: # Static targets
+  - targets: [ 'otel-collector:8889' ] # The collector app metrics endpoint

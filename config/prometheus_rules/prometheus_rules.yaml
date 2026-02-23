@@ -1,57 +1,71 @@
 # ==============================================================================
 # PROMETHEUS ALERTING RULES - PRODUCTION
 # Hierarchy: Infrastructure (Host) -> Container -> Application
+# Purpose: Defines robust alerting logic to detect anomalies across the stack.
+# These rules proactively monitor resource saturation and application health.
 # ==============================================================================
 
 groups:
 - name: Infrastructure_Alerts
   rules:
-  # --- CPU MONITORING ---
-  # Logic: Calculate non-idle time across all cores per instance.
+  # ----------------------------------------------------------------------------
+  # CPU MONITORING
+  # ----------------------------------------------------------------------------
+  # Logic: Calculate the inverse of idle time (active time) across all CPU cores.
+  # Threshold: If active CPU exceeds 85% for 5 continuous minutes, trigger alert.
   - alert: HostHighCpuLoad
     expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) > 85
     for: 5m
     labels:
-      severity: warning
+      severity: warning # Non-critical but requires attention to prevent degradation
       layer: infrastructure
     annotations:
       summary: "High CPU usage on {{ $labels.instance }}"
-      description: "CPU load is consistently above 85% (current: {{ $value | printf \"%.2f\" }}%)."
+      description: "CPU load is consistently above 85% (current: {{ $value | printf \"%.2f\" }}%). This may lead to processing delays."
 
-  # --- DISK MONITORING ---
-  # Logic: Detect disks with less than 15% available space.
+  # ----------------------------------------------------------------------------
+  # DISK MONITORING
+  # ----------------------------------------------------------------------------
+  # Logic: Determine remaining disk space percentage.
+  # Threshold: If available space drops below 15% for 2 minutes, trigger alert.
   - alert: HostDiskFillingUp
     expr: (node_filesystem_avail_bytes / node_filesystem_size_bytes) * 100 < 15
     for: 2m
     labels:
-      severity: critical
+      severity: critical # High priority: Disk exhaustion causes immediate system failures
       layer: infrastructure
     annotations:
       summary: "Critical Disk Space on {{ $labels.device }}"
-      description: "Storage on {{ $labels.instance }} is nearly full (current: {{ $value | printf \"%.2f\" }}% remaining)."
+      description: "Storage on {{ $labels.instance }} is nearly full (current: {{ $value | printf \"%.2f\" }}% remaining). Immediate cleanup required."
 
 - name: Application_Alerts
   rules:
-  # --- HTTP ERROR RATES ---
-  # Logic: Monitor OTLP metrics for server-side crashes (5xx status codes).
-  # Threshold: > 0.1 req/sec indicates a persistent failure.
+  # ----------------------------------------------------------------------------
+  # HTTP ERROR RATES
+  # ----------------------------------------------------------------------------
+  # Logic: Monitor OTLP metrics for server-side exceptions (5xx HTTP status codes).
+  # Threshold: > 0.1 errors per second sustained over 1 minute indicates a persistent deployment issue or crash.
   - alert: NodeJsCriticalErrorRate
     expr: rate(http_server_duration_count{status_code=~"5.."}[1m]) > 0.1
     for: 1m
     labels:
-      severity: critical
+      severity: critical # Direct impact on end-user experience
       layer: application
     annotations:
       summary: "Elevated 5xx Error Rate in {{ $labels.service_name }}"
-      description: "Application is returning 5xx errors at a rate of {{ $value | printf \"%.2f\" }} req/sec."
+      description: "Application is returning 5xx errors at a high rate of {{ $value | printf \"%.2f\" }} req/sec. Check logs for stack traces."
 
-  # --- TRACE LATENCY ---
-  # Logic: Alert if 95th percentile of request duration exceeds 1 second.
+  # ----------------------------------------------------------------------------
+  # TRACE LATENCY
+  # ----------------------------------------------------------------------------
+  # Logic: Calculate the 95th percentile (P95) of HTTP request durations.
+  # Threshold: Alert if 95% of user requests are taking longer than 1,000 milliseconds (1 second) for 2 minutes.
   - alert: SlowTraceLatency
     expr: histogram_quantile(0.95, sum(rate(http_server_duration_bucket[5m])) by (le, service_name)) > 1000
     for: 2m
     labels:
-      severity: warning
+      severity: warning # Indicates degraded performance, but not full downtime
+      layer: application
     annotations:
-      summary: "High Latency Detected"
-      description: "95% of requests in {{ $labels.service_name }} are slower than 1s."
+      summary: "High Request Latency Detected in {{ $labels.service_name }}"
+      description: "The P95 latency for requests in {{ $labels.service_name }} is extremely slow (slower than 1s). Investigate downstream dependencies or database queries."

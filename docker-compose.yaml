@@ -1,57 +1,75 @@
-version: '3.8'
+version: '3.8' # Docker Compose file format version
 
 # ==============================================================================
 # OBSERVABILITY STACK: FULL LGTM + PYROSCOPE
 # ==============================================================================
 
 services:
+  # Defines all the independent containers that make up our architecture
 
-  # --- INGESTION: OpenTelemetry Collector ---
+  # ==============================================================================
+  # INGESTION LAYER
+  # ==============================================================================
+  # SERVICE: otel-collector
+  # PURPOSE: Central data pipeline. Receives metrics, logs, and traces from the
+  # application via OTLP, processes them, and exports them to backend storage.
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:0.99.0
-    container_name: otel-collector
-    user: "0:0"
-    command: [ "--config=/etc/otel-config.yaml" ]
+    # Service definition for the OpenTelemetry Collector
+    image: otel/opentelemetry-collector-contrib:0.99.0 # Pulls the community-driven contrib image
+    container_name: otel-collector # Sets a friendly name instead of a random hash
+    user: "0:0" # Runs as the root user/group to prevent file permission errors
+    command: [ "--config=/etc/otel-config.yaml" ] # Command-line flags to start the collector
     ports:
-      - "4317:4317" # OTLP gRPC
-      - "4318:4318" # OTLP HTTP
-      - "8888:8888"
-      - "8889:8889"
+      # Maps host ports to container ports (Host:Container)
+      - "4317:4317" # Default port for OTLP gRPC protocol (high performance)
+      - "4318:4318" # Default port for OTLP HTTP protocol (web clients)
+      - "8888:8888" # Exposes internal metrics about the collector itself
+      - "8889:8889" # Exposes processed application metrics for Prometheus to scrape
     volumes:
-      - ./config/otel-config.yaml:/etc/otel-config.yaml:ro
-      - otel-data:/var/lib/otelcol/persistence
+      # Mounts local files/directories into the container
+      - ./config/otel-config.yaml:/etc/otel-config.yaml:ro # Mount config read-only
+      - otel-data:/var/lib/otelcol/persistence # Mount persistence volume (prevents data loss)
     networks:
-      - observability
+      # Attaches the container to a specific Docker network
+      - observability # Ensures all containers can communicate with each other
     depends_on:
-      - loki
-      - tempo
-      - prometheus
-    restart: unless-stopped
+      # Controls startup order (waits for backends to start first)
+      - loki # Wait for log backend
+      - tempo # Wait for trace backend
+      - prometheus # Wait for metric backend
+    restart: unless-stopped # Automatically restarts upon crash or host reboot
 
-  # --- STORAGE: Metrics (Prometheus) ---
+  # ==============================================================================
+  # STORAGE LAYER: TIME-SERIES METRICS
+  # ==============================================================================
+  # SERVICE: prometheus
+  # PURPOSE: Scrapes and stores short-term metrics. Evaluates alerting rules.
   prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
+    # Service definition for Prometheus metrics storage
+    image: prom/prometheus:latest # Pulls the official latest Prometheus image
+    container_name: prometheus # Friendly container name
     command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=7d'
-      - '--storage.tsdb.min-block-duration=2h'
-      - '--storage.tsdb.max-block-duration=2h'
-      - '--web.enable-lifecycle'
-      # REQUIRED: Allows Tempo's Metrics-Generator to push data here
-      - '--web.enable-remote-write-receiver'
-      # REQUIRED: Allows clicking "dots" on graphs to see Traces
-      - '--enable-feature=exemplar-storage'
+      # Command-line flags supplied to the Prometheus binary
+      - '--config.file=/etc/prometheus/prometheus.yml' # Path to its configuration file
+      - '--storage.tsdb.path=/prometheus' # Where Prometheus writes data internally
+      - '--storage.tsdb.retention.time=7d' # Keep metrics locally for 7 days
+      - '--storage.tsdb.min-block-duration=2h' # Set minimum data block size to 2 hours
+      - '--storage.tsdb.max-block-duration=2h' # Set maximum data block size to 2 hours
+      - '--web.enable-lifecycle' # Allows reloading config via an HTTP POST request
+      - '--web.enable-remote-write-receiver' # REQUIRED: Allows Tempo to push metrics here
+      - '--enable-feature=exemplar-storage' # REQUIRED: Enables Traces integration ("dots" on graphs)
     ports:
-      - "9090:9090"
+      # Expose the web interface
+      - "9090:9090" # Prometheus default UI and API port
     volumes:
-      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro
-      - ./config/prometheus_rules:/etc/prometheus/prometheus_rules:ro
-      - prometheus-data:/prometheus
+      # Map config files and persistent storage
+      - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml:ro # Mount main config
+      - ./config/prometheus_rules:/etc/prometheus/prometheus_rules:ro # Mount alerting rules
+      - prometheus-data:/prometheus # Mount persistent data volume
     networks:
-      - observability
-    restart: unless-stopped
+      # Assign to the shared network
+      - observability # Enables Prometheus to reach the Otel Collector
+    restart: unless-stopped # Keep it running
 
   # ==============================================================================
   # SERVICE: thanos-sidecar
@@ -60,27 +78,33 @@ services:
   #   Exposes Prometheus data to Thanos Query.
   # ==============================================================================
   thanos-sidecar:
-    image: quay.io/thanos/thanos:v0.35.0
-    container_name: thanos-sidecar
-    user: "0:0"
+    # Companion container running alongside Prometheus
+    image: quay.io/thanos/thanos:v0.35.0 # Pulls the Thanos image
+    container_name: thanos-sidecar # Friendly name
+    user: "0:0" # Run as root to read Prometheus data
     command:
-      - sidecar
-      - --tsdb.path=/prometheus
-      - --prometheus.url=http://prometheus:9090
-      - --grpc-address=0.0.0.0:10901
-      - --http-address=0.0.0.0:10902
-      - --objstore.config-file=/etc/thanos/thanos-storage.yaml
+      # Starts Thanos in sidecar mode
+      - sidecar # Specifies the sidecar component
+      - --tsdb.path=/prometheus # Points to the local Prometheus data directory
+      - --prometheus.url=http://prometheus:9090 # How to talk to the local Prometheus
+      - --grpc-address=0.0.0.0:10901 # Port for internal interactions (Thanos Query)
+      - --http-address=0.0.0.0:10902 # Port for health checks/admin
+      - --objstore.config-file=/etc/thanos/thanos-storage.yaml # Details for AWS S3 upload
     volumes:
-      - prometheus-data:/prometheus
-      - ./config/thanos-storage.yaml:/etc/thanos/thanos-storage.yaml
+      # Share Prometheus data with the sidecar
+      - prometheus-data:/prometheus # The EXACT same volume Prometheus uses
+      - ./config/thanos-storage.yaml:/etc/thanos/thanos-storage.yaml # Mount S3 config
     ports:
-      - "10901:10901"
-      - "10912:10902"
+      # Expose interfaces
+      - "10901:10901" # Expose gRPC API
+      - "10912:10902" # Expose HTTP API
     depends_on:
-      - prometheus
+      # Must wait for Prometheus to initialize the directory
+      - prometheus # Prometheus dependency
     networks:
-      - observability
-    restart: unless-stopped
+      # Add to the shared network
+      - observability # observability network
+    restart: unless-stopped # Keep it running
 
   # ==============================================================================
   # SERVICE: thanos-store
@@ -88,22 +112,26 @@ services:
   #   Reads historical metric blocks from S3.
   #   Makes long-term metrics queryable.
   # ==============================================================================
-
   thanos-store:
-    image: quay.io/thanos/thanos:v0.35.0
-    container_name: thanos-store
+    # The Thanos Store Gateway
+    image: quay.io/thanos/thanos:v0.35.0 # Pulls the Thanos image
+    container_name: thanos-store # Friendly name
     command:
-      - store
-      - --grpc-address=0.0.0.0:10901
-      - --http-address=0.0.0.0:10902
-      - --objstore.config-file=/etc/thanos/thanos-storage.yaml
+      # Run Thanos as a store gateway
+      - store # Specifies the store component
+      - --grpc-address=0.0.0.0:10901 # Port for queries from Thanos Query
+      - --http-address=0.0.0.0:10902 # Port for health metrics
+      - --objstore.config-file=/etc/thanos/thanos-storage.yaml # S3 Bucket config
     volumes:
-      - ./config/thanos-storage.yaml:/etc/thanos/thanos-storage.yaml
+      # Mount required configs
+      - ./config/thanos-storage.yaml:/etc/thanos/thanos-storage.yaml # Storage config
     ports:
-      - "10911:10901"
+      # Publish container ports
+      - "10911:10901" # Mapped to a unique host port to prevent conflicts
     networks:
-      - observability
-    restart: unless-stopped
+      # Join network
+      - observability # Network access
+    restart: unless-stopped # Resilience
 
   # ==============================================================================
   # SERVICE: thanos-compactor
@@ -113,24 +141,27 @@ services:
   #   - Enforces retention policy
   #   - Optimizes S3 storage and query performance
   # ==============================================================================
-
   thanos-compactor:
-    image: quay.io/thanos/thanos:v0.35.0
-    container_name: thanos-compactor
+    # Maintenance service for Thanos S3 data
+    image: quay.io/thanos/thanos:v0.35.0 # Pulls the Thanos image
+    container_name: thanos-compactor # Friendly name
     command:
-      - compact
-      - --data-dir=/var/thanos/compact
-      - --objstore.config-file=/etc/thanos/thanos-storage.yaml
-      - --retention.resolution-raw=30d
-      - --retention.resolution-5m=90d
-      - --retention.resolution-1h=365d
-      - --wait
+      # Start Thanos as a compactor
+      - compact # Specifies the compact component
+      - --data-dir=/var/thanos/compact # Local directory for temporary processing
+      - --objstore.config-file=/etc/thanos/thanos-storage.yaml # S3 bucket config
+      - --retention.resolution-raw=30d # Keep raw resolution data for 30 days
+      - --retention.resolution-5m=90d # Keep 5-minute downsampled data for 90 days
+      - --retention.resolution-1h=365d # Keep 1-hour downsampled data for 1 year
+      - --wait # Keep running and wait for new blocks to arrive
     volumes:
-      - ./config/thanos-storage.yaml:/etc/thanos/thanos-storage.yaml
-      - thanos-compact-data:/var/thanos/compact
+      # Persistent storage and configs
+      - ./config/thanos-storage.yaml:/etc/thanos/thanos-storage.yaml # S3 config
+      - thanos-compact-data:/var/thanos/compact # Cache volume for operations
     networks:
-      - observability
-    restart: unless-stopped
+      # Network assignment
+      - observability # Network access
+    restart: unless-stopped # Keep it running
 
   # ==============================================================================
   # SERVICE: thanos-query
@@ -142,22 +173,27 @@ services:
   #   This becomes Grafana's datasource.
   # ==============================================================================
   thanos-query:
-    image: quay.io/thanos/thanos:v0.35.0
-    container_name: thanos-query
+    # The query frontend for all metrics
+    image: quay.io/thanos/thanos:v0.35.0 # Thanos image
+    container_name: thanos-query # Friendly name
     command:
-      - query
-      - --http-address=0.0.0.0:9091
-      - --grpc-address=0.0.0.0:10903
-      - --store=thanos-sidecar:10901
-      - --store=thanos-store:10901
+      # Run as query frontend
+      - query # Specifies the query component
+      - --http-address=0.0.0.0:9091 # The HTTP API port (same as Prometheus!)
+      - --grpc-address=0.0.0.0:10903 # Internal gRPC port
+      - --store=thanos-sidecar:10901 # Connect to short-term data (Prometheus via Sidecar)
+      - --store=thanos-store:10901 # Connect to long-term data (S3 via Store)
     ports:
-      - "9091:9091"
+      # Publish the query interface
+      - "9091:9091" # Grafana queries this port instead of 9090
     depends_on:
-      - thanos-sidecar
-      - thanos-store
+      # Wait for data stores to be ready
+      - thanos-sidecar # Sidecar dependency
+      - thanos-store # Store dependency
     networks:
-      - observability
-    restart: unless-stopped
+      # Network access
+      - observability # Network access
+    restart: unless-stopped # Reliability
 
   # ==============================================================================
   # SERVICE: loki
@@ -165,115 +201,167 @@ services:
   #   Stores and queries log data.
   # ==============================================================================
   loki:
-    image: grafana/loki:3.5.0
-    container_name: loki
-    user: "0:0"
-    command: [ "-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true" ]
+    # Grafana Loki Log aggregation backend
+    image: grafana/loki:3.5.0 # Official Loki image
+    container_name: loki # Friendly name
+    user: "0:0" # Run as root to avoid permissions issues when manipulating volume
+    command: [ "-config.file=/etc/loki/loki-config.yaml", "-config.expand-env=true" ] # Start with config and evaluate env vars
     ports:
-      - "3100:3100"
+      # Publish ports
+      - "3100:3100" # HTTP API port used by Grafana and Otel Collector
     volumes:
-      - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro
-      - loki-data:/var/loki
-    env_file: .env
+      # Maps configuration and local cache
+      - ./config/loki-config.yaml:/etc/loki/loki-config.yaml:ro # Mount the config file
+      - loki-data:/var/loki # Mount local storage volume
+    env_file: .env # Load environment variables from a .env file
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION}
+      # Forward these env variables to the container for AWS auth
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} # Pass AWS access key
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} # Pass AWS secret key
+      - AWS_REGION=${AWS_REGION} # Pass the AWS region setup
     networks:
-      - observability
-    restart: unless-stopped
+      # Internal routing
+      - observability # Network access
+    restart: unless-stopped # Automatically restart
 
-  # --- STORAGE: Traces (Tempo) ---
+  # ==============================================================================
+  # STORAGE LAYER: DISTRIBUTED TRACES
+  # ==============================================================================
+  # SERVICE: tempo
+  # PURPOSE: High-volume tracing backend. Stores request spans representing the
+  # journey of a user request through the distributed system.
   tempo:
-    image: grafana/tempo:2.10.0
-    container_name: tempo
-    command: [ "-config.file=/etc/tempo.yaml", "-config.expand-env=true" ]
+    # Grafana Tempo tracing backend
+    image: grafana/tempo:2.10.0 # Official Tempo image
+    container_name: tempo # Friendly name
+    command: [ "-config.file=/etc/tempo.yaml", "-config.expand-env=true" ] # Start with config and evaluate env vars
     ports:
-      - "3200:3200" # HTTP API
-      - "7946:7946" # Gossip Ring (FIXES: "empty ring" error for TraceQL)
+      # Port configurations
+      - "3200:3200" # HTTP API port
+      - "7946:7946" # Gossip Ring port (FIXES: "empty ring" error for TraceQL limits)
     volumes:
-      - ./config/tempo-config.yaml:/etc/tempo.yaml
-      - tempo-data:/var/tempo
-    env_file: .env
+      # Configurations
+      - ./config/tempo-config.yaml:/etc/tempo.yaml # Mount Tempo configurations
+      - tempo-data:/var/tempo # Persistent trace data buffer volume
+    env_file: .env # Read .env file for secret injection
     environment:
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      - AWS_REGION=${AWS_REGION}
+      # Expose exact environment variables to the Tempo process
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID} # Pass AWS access key
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY} # Pass AWS secret key
+      - AWS_REGION=${AWS_REGION} # Pass the AWS region setup
     networks:
-      - observability
-    restart: unless-stopped
+      # Internal connectivity
+      - observability # Network access
+    restart: unless-stopped # Reliable execution
 
-  # --- STORAGE: Profiles (Pyroscope) ---
+  # ==============================================================================
+  # STORAGE LAYER: CONTINUOUS PROFILING
+  # ==============================================================================
+  # SERVICE: pyroscope
+  # PURPOSE: Ingests and stores eBPF/code-level profiles. Helps identify CPU
+  # and memory bottlenecks.
   pyroscope:
-    image: grafana/pyroscope:latest
-    container_name: pyroscope
-    command: [ "server", "-target=all", "-auth.multitenancy-enabled=false" ]
+    # Grafana Pyroscope continuous profiling server
+    image: grafana/pyroscope:latest # Official Pyroscope image
+    container_name: pyroscope # Set clean container name
+    command: [ "server", "-target=all", "-auth.multitenancy-enabled=false" ] # Run in monolithic mode without mandatory multitenancy headers
     ports:
-      - "4040:4040" # Pyroscope UI and ingestion
+      # Network map
+      - "4040:4040" # HTTP UI and Profile ingestion port
     volumes:
-      - pyroscope-data:/var/lib/pyroscope
+      # Volume mapping
+      - pyroscope-data:/var/lib/pyroscope # Persistent profiling data database
     networks:
-      - observability
-    restart: unless-stopped
+      # Inter-container communication
+      - observability # Share the network
+    restart: unless-stopped # Fault tolerance
 
-  # --- INFRASTRUCTURE: Node Exporter & cAdvisor ---
+  # ==============================================================================
+  # INFRASTRUCTURE METRICS COLLECTION
+  # ==============================================================================
+  # SERVICE: node-exporter
+  # PURPOSE: Exposes hardware and OS-level metrics (CPU, memory, disk).
   node-exporter:
-    image: prom/node-exporter:latest
-    container_name: node-exporter
+    # Prometheus Node Exporter
+    image: prom/node-exporter:latest # Official node exporter image
+    container_name: node-exporter # Friendly name
     volumes:
-      - /:/host:ro,rslave
+      # Host mounting mapping
+      - /:/host:ro,rslave # Mount entire host OS as read-only to monitor it
     networks:
-      - observability
-    restart: unless-stopped
+      # Expose to Prometheus
+      - observability # Share network
+    restart: unless-stopped # Keep daemon up
 
+  # SERVICE: cadvisor
+  # PURPOSE: Exposes container resource usage and isolation metrics.
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.47.0
-    container_name: cadvisor
-    privileged: true
+    # Google cAdvisor (Container Advisor)
+    image: gcr.io/cadvisor/cadvisor:v0.47.0 # Official cAdvisor image
+    container_name: cadvisor # Set friendly name
+    privileged: true # REQUIRED: Execute with elevated privileges to read Docker stats
     ports:
-      - "8080:8080"
+      # Publish port
+      - "8080:8080" # Unauthenticated metrics port
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
+      # OS & Docker Socket mounts needed to read container behavior
+      - /:/rootfs:ro # Map host root file system
+      - /var/run:/var/run:ro # Map the host run directory (sockets)
+      - /sys:/sys:ro # Map host cgroups architecture metrics block
+      - /var/lib/docker/:/var/lib/docker:ro # Map where docker binaries and metadata live
     networks:
-      - observability
-    restart: unless-stopped
+      # Routing group
+      - observability # Connect to Prometheus
+    restart: unless-stopped # Keep tracking containers
 
-  # --- VISUALIZATION: Grafana ---
+  # ==============================================================================
+  # VISUALIZATION LAYER
+  # ==============================================================================
+  # SERVICE: grafana
+  # PURPOSE: Unified dashboards and analytics platform. Connects to Prometheus,
+  # Loki, Tempo, Thanos, and Pyroscope to render single-pane-of-glass views.
   grafana:
-    image: grafana/grafana:latest
-    container_name: grafana
+    # Grafana User Interface Component
+    image: grafana/grafana:latest # Pulls latest graphical interface server
+    container_name: grafana # User-friendly name
     ports:
-      - "3000:3000"
+      # Port exposures
+      - "3000:3000" # Host HTTP port for browsers
     volumes:
-      - grafana-data:/var/lib/grafana
-      - ./config:/etc/grafana/provisioning/datasources:ro
+      # Dashboard and configuration mounts
+      - grafana-data:/var/lib/grafana # Retain dashboards and users through reboots
+      - ./config:/etc/grafana/provisioning/datasources:ro # Auto-provision the Loki/Prometheus/Tempo datasources via files
     environment:
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_INSTALL_PLUGINS=grafana-pyroscope-app
+      # Variables processed when Grafana boots
+      - GF_AUTH_ANONYMOUS_ENABLED=true # Disable the login requirement (For Dev/Demo!)
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin # Auto-grant anonymous users Admin privileges
+      - GF_INSTALL_PLUGINS=grafana-pyroscope-app # Auto-install the pyroscope visualization plugin
     networks:
-      - observability
+      # Network map
+      - observability # Grants UI access to querying all databases
     depends_on:
-      - loki
-      - prometheus
-      - tempo
-      - pyroscope
-    restart: unless-stopped
+      # Boot order map
+      - loki # Ensure data source backend exists
+      - prometheus # Ensure data source backend exists
+      - tempo # Ensure data source backend exists
+      - pyroscope # Ensure data source backend exists
+    restart: unless-stopped # Service reliability
 
 volumes:
-  grafana-data:
-  prometheus-data:
-  thanos-compact-data:
-  tempo-data:
-  loki-data:
-  otel-data:
+  # Define named persistent storage volumes managed by Docker
+  grafana-data: # Retains Grafana settings/dashboards
+  prometheus-data: # Retains Prometheus local TSDB
+  thanos-compact-data: # Retains Thanos temporary compactor space
+  tempo-data: # Retains tempo traces pending object storage upload
+  loki-data: # Retains loki caching indexes
+  otel-data: # Retains buffered un-sent telemetry for reliability
   pyroscope-data:
+    # Profiling data buffer cache
     # New volume for profiling data
 
 networks:
+  # Network namespace settings
   observability:
-    driver: bridge
-    name: observability
+    # Create a dedicated network for monitoring layer
+    driver: bridge # Use the bridge standard network type
+    name: observability # Use static name instead of project-prefixed one

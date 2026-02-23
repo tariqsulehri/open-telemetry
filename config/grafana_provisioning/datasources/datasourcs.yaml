@@ -1,31 +1,53 @@
+# ==============================================================================
+# GRAFANA DATASOURCES CONFIGURATION
+# ==============================================================================
+# This file defines the default datasources for Grafana to automatically provision
+# on startup. It connects Grafana to Prometheus, Loki, and Tempo, ensuring seamless
+# querying and data correlation across metrics, logs, and traces.
+
 apiVersion: 1
 
 datasources:
+# ------------------------------------------------------------------------------
+# PROMETHEUS DATASOURCE
+# ------------------------------------------------------------------------------
+# The primary backend for time-series metrics (infrastructure and application).
 - name: Prometheus
   type: prometheus
   uid: prometheus
   url: http://prometheus:9090
-  isDefault: true
+  isDefault: true # Sets this as the default datasource for new panels
   jsonData:
-    httpMethod: POST
-    # This ensures Prometheus treats the collector timestamps correctly
+    httpMethod: POST # Prefer POST for complex/large PromQL queries
+    # Aligns Grafana's step interval with Prometheus' scrape interval (15s)
+    # ensuring accurate data resolution and rendering.
     timeInterval: "15s"
 
+# ------------------------------------------------------------------------------
+# LOKI DATASOURCE
+# ------------------------------------------------------------------------------
+# The backend for structured log aggregation.
 - name: Loki
   type: loki
   uid: loki
   url: http://loki:3100
   jsonData:
+    # Derived Fields: Automatically extracts specific patterns (like trace IDs)
+    # from logs and transforms them into interactive hyperlinks.
     derivedFields:
     - name: TraceID
-      datasourceUid: tempo
+      datasourceUid: tempo # Link this field directly to the Tempo datasource
       matcherType: label
-      # For structured metadata, we use the label name directly
+      # Specifies to extract the traceID using regex matching against the labels
       matcherRegex: traceID
-      sourceField: "traceID" # <--- THIS is the key for Loki 3.0
+      sourceField: "traceID" # Crucial key for enabling trace-log correlation in Loki 3.0+
       urlLabel: "View Trace in Tempo"
-      internalLink: true
+      internalLink: true # Ensures the link opens within the Grafana UI
 
+# ------------------------------------------------------------------------------
+# TEMPO DATASOURCE
+# ------------------------------------------------------------------------------
+# The backend for highly scalable, distributed tracing.
 - name: Tempo
   type: tempo
   uid: tempo
@@ -33,12 +55,14 @@ datasources:
   url: http://tempo:3200
   jsonData:
     httpMethod: GET
+    # Service Map Context: Links traces to specific infrastructure metrics via Prometheus.
     serviceMap:
-      datasourceUid: 'prometheus' # Ensure this matches your Prometheus UID
+      datasourceUid: 'prometheus' # Ensure this exactly matches the Prometheus UID above
     nodeGraph:
-      enabled: true
+      enabled: true # Enables the visual node graph representation of traces
     search:
-      hide: false
+      hide: false # Allows querying directly within the Tempo UI
+    # Trace-to-Log Correlation: Easily jump to logs related to a specific trace.
     lokiSearch:
       datasourceUid: 'loki'
     traceQuery:

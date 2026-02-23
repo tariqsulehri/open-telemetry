@@ -9,7 +9,7 @@
 # Server Configuration
 # ------------------------------------------------------------------------------
 # Configures the HTTP server for Tempo.
-server:
+server: # HTTP server configurations used internally and for health
   http_listen_port: 3200 # Port where Tempo listens for HTTP traffic (e.g., metrics, health checks)
 
 # ------------------------------------------------------------------------------
@@ -17,13 +17,13 @@ server:
 # ------------------------------------------------------------------------------
 # The distributor is responsible for receiving spans from clients and distributing
 # them to ingesters.
-distributor:
-  receivers:
-    otlp:
-      protocols:
-        http:
+distributor: # Manages ingestion layer
+  receivers: # Defines how Tempo accepts telemetry
+    otlp: # Uses the OpenTelemetry protocol
+      protocols: # Endpoints to enable
+        http: # Enable HTTP ingest
           endpoint: 0.0.0.0:4318 # Endpoint for OTLP HTTP receiver
-        grpc:
+        grpc: # Enable gRPC ingest
           endpoint: 0.0.0.0:4317 # Endpoint for OTLP gRPC receiver
 
 # ------------------------------------------------------------------------------
@@ -31,10 +31,10 @@ distributor:
 # ------------------------------------------------------------------------------
 # Ingesters receive traces from distributors, batch them, and ultimately push
 # them to long-term storage.
-ingester:
-  lifecycler:
-    ring:
-      kvstore:
+ingester: # Component handling buffering of trace blocks
+  lifecycler: # Handles ring topology lifecycle
+    ring: # Configuration for the internal hash ring coordinating nodes
+      kvstore: # The backing key-value store for the ring status
         store: inmemory # Uses in-memory Key-Value store for ring management (suitable for single-instance or testing)
       replication_factor: 1 # Number of replicas for each trace (1 is sufficient for local/dev environments)
 
@@ -42,21 +42,21 @@ ingester:
 # Storage Configuration
 # ------------------------------------------------------------------------------
 # Configures where and how traces are stored.
-storage:
-  trace:
-    backend: s3 # Use AWS S3 (or compatible storage) as the backend
-    wal:
-      path: /var/tempo/wal # Directory for Write-Ahead Log (WAL) to ensure data durability before flushing
-    s3:
+storage: # Storage engine configuration
+  trace: # Settings specific to trace storage
+    backend: s3 # Use AWS S3 (or compatible object storage) as the backend
+    wal: # Write Ahead Log to prevent data loss upon crash
+      path: /var/tempo/wal # Directory for Write-Ahead Log (WAL) to ensure data durability before flushing to S3
+    s3: # S3 specific settings
       bucket: org-observability-tempo-traces # S3 bucket name
       endpoint: s3.us-east-1.amazonaws.com # S3 endpoint URL
       region: us-east-1 # AWS Region
       access_key: ${AWS_ACCESS_KEY_ID} # AWS Access Key ID (from environment variable)
       secret_key: ${AWS_SECRET_ACCESS_KEY} # AWS Secret Access Key (from environment variable)
-      insecure: false # Set to true if using non-SSL endpoint (e.g., MinIO locally), false for AWS S3
+      insecure: false # Set to true if using non-SSL endpoint (e.g., MinIO locally), false for AWS S3 (uses HTTPS)
 
-overrides:
-  defaults:
-    metrics_generator:
-      processors: [service-graphs, span-metrics, local-blocks] # enables metrics generator
-      generate_native_histograms: both
+overrides: # Overrides for default behaviors
+  defaults: # Apply these defaults system-wide
+    metrics_generator: # Configuration for generating metrics from span data directly inside Tempo
+      processors: [service-graphs, span-metrics, local-blocks] # Enables specific metric generators
+      generate_native_histograms: both # Emit both native histograms and standard prometheus histograms
