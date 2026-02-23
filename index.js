@@ -4,7 +4,7 @@
  * ============================================================
  */
 require('./src/telemetry/instrumentation'); // OTEL must be first
-require('./src/telemetry/pyroscore');
+require('./src/telemetry/pyroscope');
 
 /**
  * ============================================================
@@ -15,7 +15,6 @@ const express = require('express');
 const dotenv = require('dotenv');
 const axios = require('axios');
 const { context, trace } = require('@opentelemetry/api');
-const Pyroscope = require('@pyroscope/nodejs');
 const { rollTheDice } = require('./dice.js');
 const { info, error, warn } = require('./src/loggers/logger');
 
@@ -46,12 +45,12 @@ app.get('/health', (req, res) => {
     res.status(200).json('OK');
 });
 
-app.get('/debug/cpu-stress', (req, res) => {
+app.get('/cpu-stress', (req, res) => {
     const start = Date.now();
     while (Date.now() - start < 2000) {
         Math.random() * Math.random();
     }
-    res.send('CPU stress test complete');
+    res.status(200).send('CPU stress test complete');
 });
 
 app.get('/slow', (req, res) => {
@@ -90,6 +89,21 @@ app.get('/rolldice', (req, res) => {
 
     info('Received request for /rolldice', { rolls });
     res.json(rollTheDice(rolls, 1, 6));
+});
+
+app.get('/order_created', (req, res) => {
+    info('Order created successfully');
+    res.status(201).json({ message: 'Order created' });
+});
+
+app.get('/order_canceled', (req, res) => {
+    info('Order canceled');
+    res.status(200).json({ message: 'Order canceled' });
+});
+
+app.get('/payment_done', (req, res) => {
+    info('Payment processed successfully');
+    res.status(200).json({ message: 'Payment done' });
 });
 
 /**
